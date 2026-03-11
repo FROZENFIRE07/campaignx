@@ -1,4 +1,6 @@
 import "./globals.css";
+import AppShell from "./components/AppShell";
+import { ToastProvider } from "./components/Toast";
 
 export const metadata = {
   title: "CampaignX | AI-Powered Campaign Management",
@@ -7,8 +9,12 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en" data-theme="dark">
+      <body>
+        <ToastProvider>
+          <AppShell>{children}</AppShell>
+        </ToastProvider>
+      </body>
     </html>
   );
 }

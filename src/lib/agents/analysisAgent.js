@@ -1,8 +1,10 @@
 /**
- * Analysis Agent - Analyzes campaign performance metrics
+ * Analysis Agent — Analyzes campaign performance metrics.
+ * Schema-adaptive: uses schema metadata to detect ID fields and skip identity columns.
  */
 
 import { callLLM } from './llmService';
+import { analyzeSchema, detectIdField, isIdentityField } from './schemaAnalyzer';
 
 export async function analysisAgent(reportData, originalStrategy, cohortData) {
     const reportRows = reportData?.data || [];
@@ -24,19 +26,33 @@ export async function analysisAgent(reportData, originalStrategy, cohortData) {
         if (r.EC === 'Y') bySubject[key].clicked++;
     });
 
+    // Build schema from cohort to dynamically detect ID field and identity columns
+    const schema = analyzeSchema(cohortData || []);
+    const idField = detectIdField(schema);
+
     // Build per-customer ID mapping to cohort for segment analysis
     const cohortMap = {};
-    (cohortData || []).forEach(c => { cohortMap[c.customer_id] = c; });
+    (cohortData || []).forEach(c => { cohortMap[c[idField]] = c; });
 
-    // Segment performance analysis
+    // Detect which report field maps to customer ID (may be 'customer_id' or match cohort's ID field)
+    const reportIdField = reportRows[0]
+        ? (Object.keys(reportRows[0]).find(f => f === idField)
+            || Object.keys(reportRows[0]).find(f => /customer_?id/i.test(f))
+            || Object.keys(reportRows[0]).find(f => /_id$/i.test(f))
+            || 'customer_id')
+        : 'customer_id';
+
+    // Segment performance analysis — skip identity fields using schema
     const segmentPerf = {};
     reportRows.forEach(r => {
-        const customer = cohortMap[r.customer_id];
+        const customer = cohortMap[r[reportIdField]];
         if (!customer) return;
 
-        // Use cohort fields for segmenting
         for (const [field, value] of Object.entries(customer)) {
-            if (['customer_id', 'Email_ID', 'FirstName', 'LastName'].includes(field)) continue;
+            // Skip identity/contact fields based on schema detection
+            const fieldDetail = schema.fieldDetails[field];
+            if (!fieldDetail || isIdentityField(fieldDetail)) continue;
+
             const key = `${field}:${value}`;
             if (!segmentPerf[key]) segmentPerf[key] = { total: 0, opened: 0, clicked: 0, field, value };
             segmentPerf[key].total++;

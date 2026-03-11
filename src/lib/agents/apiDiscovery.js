@@ -107,26 +107,63 @@ export async function executeAPICall(tool, params = {}, body = null, apiKey = nu
     const headers = { 'Content-Type': 'application/json' };
     if (apiKey) headers['X-API-Key'] = apiKey;
 
+    const startTime = Date.now();
+    console.log(`[API-CALL] >> ${tool.method} ${url} (timeout: 120s)`);
+    if (body) console.log(`[API-CALL]    Body keys: ${Object.keys(body).join(', ')}`);
+
+    // Add timeout to prevent indefinite hanging
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
+
     const fetchOptions = {
         method: tool.method,
         headers,
+        signal: controller.signal,
     };
 
     if (body && ['POST', 'PUT', 'PATCH'].includes(tool.method)) {
         fetchOptions.body = JSON.stringify(body);
     }
 
-    const response = await fetch(url, fetchOptions);
-    const data = await response.json();
-    return { status: response.status, data };
+    try {
+        const response = await fetch(url, fetchOptions);
+        clearTimeout(timeoutId);
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`[API-CALL] << ${tool.method} ${tool.path} → ${response.status} (${elapsed}s)`);
+        const data = await response.json();
+        const dataSize = JSON.stringify(data).length;
+        console.log(`[API-CALL]    Response: ${dataSize} bytes, keys: ${Object.keys(data).join(', ')}`);
+        if (data.total_count !== undefined) console.log(`[API-CALL]    Records: ${data.total_count}`);
+        return { status: response.status, data };
+    } catch (err) {
+        clearTimeout(timeoutId);
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        if (err.name === 'AbortError') {
+            console.error(`[API-CALL] !! TIMEOUT after ${elapsed}s: ${tool.method} ${tool.path}`);
+            throw new Error(`API call to ${tool.path} timed out after 120s`);
+        }
+        console.error(`[API-CALL] !! ERROR after ${elapsed}s: ${tool.method} ${tool.path} → ${err.message}`);
+        throw err;
+    }
 }
 
-// Store the parsed spec in memory
+// Store the parsed spec in memory with TTL
 let cachedTools = null;
 let cachedSpec = null;
+let cacheTimestamp = 0;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+export function clearAPIToolsCache() {
+    cachedTools = null;
+    cachedSpec = null;
+    cacheTimestamp = 0;
+}
 
 export async function getAPITools() {
-    if (cachedTools) return { tools: cachedTools, spec: cachedSpec };
+    const now = Date.now();
+    if (cachedTools && (now - cacheTimestamp) < CACHE_TTL_MS) {
+        return { tools: cachedTools, spec: cachedSpec };
+    }
 
     // Read the openapi.json from the project root
     const fs = await import('fs');
@@ -137,6 +174,7 @@ export async function getAPITools() {
         const specContent = fs.readFileSync(specPath, 'utf-8');
         cachedSpec = JSON.parse(specContent);
         cachedTools = parseOpenAPISpec(cachedSpec);
+        cacheTimestamp = now;
         return { tools: cachedTools, spec: cachedSpec };
     } catch (e) {
         console.error('Failed to load OpenAPI spec:', e);

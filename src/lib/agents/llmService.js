@@ -4,10 +4,15 @@
 
 import Groq from 'groq-sdk';
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY, timeout: 60000 });
 
 export async function callLLM(systemPrompt, userPrompt, options = {}) {
     const { temperature = 0.7, maxTokens = 4096, jsonMode = false } = options;
+
+    const startTime = Date.now();
+    const promptPreview = userPrompt.substring(0, 80).replace(/\n/g, ' ');
+    console.log(`[LLM] >> Calling Groq (model: llama-3.3-70b-versatile, json: ${jsonMode}, temp: ${temperature})`);
+    console.log(`[LLM]    Prompt: "${promptPreview}..."`);
 
     try {
         const messages = [
@@ -28,6 +33,9 @@ export async function callLLM(systemPrompt, userPrompt, options = {}) {
 
         const completion = await groq.chat.completions.create(config);
         const content = completion.choices[0]?.message?.content || '';
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        const usage = completion.usage;
+        console.log(`[LLM] << Response in ${elapsed}s (tokens: ${usage?.prompt_tokens || '?'}→${usage?.completion_tokens || '?'}, total: ${usage?.total_tokens || '?'})`);
 
         if (jsonMode) {
             try {
@@ -36,13 +44,22 @@ export async function callLLM(systemPrompt, userPrompt, options = {}) {
                 // Try to extract JSON from the response
                 const jsonMatch = content.match(/\{[\s\S]*\}/);
                 if (jsonMatch) return JSON.parse(jsonMatch[0]);
+                console.error('[LLM] !! Non-JSON response:', content.substring(0, 200));
                 return { error: 'Failed to parse JSON', raw: content };
             }
         }
 
         return content;
     } catch (error) {
-        console.error('LLM call failed:', error.message);
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.error(`[LLM] !! ERROR after ${elapsed}s: ${error.message}`);
+        // Surface rate limit and token limit errors explicitly
+        if (error.status === 429) {
+            throw new Error('LLM rate limited — too many requests. Please wait and retry.');
+        }
+        if (error.status === 413 || error.message?.includes('token')) {
+            throw new Error('LLM token limit exceeded — prompt too large. Reduce cohort sample size.');
+        }
         throw error;
     }
 }

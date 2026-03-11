@@ -2,15 +2,78 @@
  * Tool Caller Agent — The LLM reads API documentation and dynamically
  * decides which endpoint to call. NO hardcoded operation IDs.
  * This is the TRUE agentic tool calling required by the rulebook.
+ * 
+ * ADAPTIVE: When external APIs fail, the agent discovers local data sources
+ * (like CSV fallback files) and decides to use them — fully LLM-driven.
  */
 
 import { callLLM } from './llmService';
 import { getAPITools, buildToolDescriptions, executeAPICall, getOperationalTools } from './apiDiscovery';
 
 /**
+ * Detect available local cohort fallback files.
+ * The agent is TOLD about these as options — it decides whether to use them.
+ */
+async function detectLocalDataSources() {
+    const fs = await import('fs');
+    const path = await import('path');
+    const sources = [];
+    const projectRoot = process.cwd();
+
+    // Scan for CSV files that look like cohort data
+    const candidates = [
+        'customer_cohort_5000_v2.csv',
+        'customer_cohort.csv',
+        'cohort_data.csv',
+    ];
+    for (const file of candidates) {
+        const filePath = path.join(projectRoot, file);
+        if (fs.existsSync(filePath)) {
+            // Read header + first 2 rows to describe the file to the LLM
+            const content = fs.readFileSync(filePath, 'utf-8');
+            const lines = content.split('\n').slice(0, 3);
+            const lineCount = content.split('\n').filter(l => l.trim()).length - 1; // minus header
+            sources.push({
+                type: 'csv_file',
+                name: file,
+                path: filePath,
+                recordCount: lineCount,
+                header: lines[0],
+                sampleRow: lines[1],
+            });
+        }
+    }
+    return sources;
+}
+
+/**
+ * Load cohort data from a local CSV file.
+ */
+async function loadCSVCohort(filePath) {
+    const fs = await import('fs');
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const lines = content.split('\n').filter(l => l.trim());
+    const headers = lines[0].split(',').map(h => h.trim());
+
+    return lines.slice(1).map(line => {
+        const vals = line.split(',').map(v => v.trim());
+        const obj = {};
+        headers.forEach((h, i) => {
+            const val = vals[i] || '';
+            // Parse numbers
+            obj[h] = !isNaN(val) && val !== '' ? Number(val) : val;
+        });
+        return obj;
+    });
+}
+
+/**
  * Given a task description, the LLM reads the API docs and decides
  * which API to call, constructs the request, and returns the result.
  * Includes a self-correction loop for error handling.
+ * 
+ * ADAPTIVE: After repeated API failures, the agent discovers local data
+ * sources and can choose to use them as a fallback.
  */
 export async function agenticToolCall(taskDescription, context = {}, maxRetries = 3) {
     const apiKey = process.env.CAMPAIGNX_API_KEY;
@@ -18,6 +81,14 @@ export async function agenticToolCall(taskDescription, context = {}, maxRetries 
     // Only show campaign-relevant APIs (signup is one-time, API key already obtained)
     const tools = getOperationalTools(allTools);
     const toolDescs = buildToolDescriptions(tools);
+
+    // Detect local data sources the agent can use if APIs fail
+    const localSources = await detectLocalDataSources();
+    const localSourceDesc = localSources.length > 0
+        ? `\n\nLOCAL DATA SOURCES (available as fallback if API is down):\n${localSources.map(s =>
+            `- File: "${s.name}" (${s.recordCount} records)\n  Headers: ${s.header}\n  Sample: ${s.sampleRow}`
+        ).join('\n')}\n\nIf the API fails or times out after multiple retries, you MAY choose to use a local data source by responding:\n{\n  "reasoning": "why you chose the local file",\n  "api_call": null,\n  "use_local_source": { "file": "filename.csv" },\n  "result": null\n}`
+        : '';
 
     const systemPrompt = `You are an AI agent that dynamically discovers and calls APIs.
 
@@ -30,11 +101,13 @@ You must:
 
 AVAILABLE API TOOLS (auto-discovered from OpenAPI spec):
 ${toolDescs}
+${localSourceDesc}
 
 RULES:
 - Never hardcode API endpoints. Always reason from the documentation.
 - If the task requires sending a campaign, the send_time must be in format 'DD:MM:YY HH:MM:SS' (IST) and must be a future time.
 - API authentication is handled automatically via X-API-Key header.
+- If the API has failed in previous attempts (timeout/error), you should consider using local data sources if available.
 
 Respond ONLY with valid JSON:
 {
@@ -68,10 +141,37 @@ If no API call is needed (e.g., the task is pure analysis), respond:
                 userPrompt += `\n\nADDITIONAL CONTEXT:\n${context.additionalInfo}`;
             }
             if (lastError) {
-                userPrompt += `\n\n⚠️ PREVIOUS ATTEMPT FAILED with error: ${lastError}\nPlease adjust your approach and try again. Reflect on what went wrong.`;
+                userPrompt += `\n\n⚠️ PREVIOUS ATTEMPT #${attempt} FAILED with error: ${lastError}\nPlease adjust your approach and try again. Reflect on what went wrong.`;
+                // After 2+ failures, explicitly nudge toward local sources
+                if (attempt >= 2 && localSources.length > 0) {
+                    userPrompt += `\n\n🔄 The API has failed ${attempt} times. Local data sources are available as described above. You may choose to use them if you determine the API is unreliable.`;
+                }
             }
 
+            console.log(`[TOOL-CALLER] Attempt ${attempt + 1}/${maxRetries} for task: "${taskDescription.substring(0, 80)}..."`);
+            if (lastError) console.log(`[TOOL-CALLER]   Previous error: ${lastError.substring(0, 150)}`);
+
             const decision = await callLLM(systemPrompt, userPrompt, { jsonMode: true, temperature: 0.3 });
+
+            console.log(`[TOOL-CALLER]   LLM decided: ${decision.reasoning?.substring(0, 150)}`);
+
+            // Check if LLM chose to use a local data source
+            if (decision.use_local_source) {
+                const chosenFile = decision.use_local_source.file;
+                const source = localSources.find(s => s.name === chosenFile);
+                if (source) {
+                    console.log(`[TOOL-CALLER]   🔄 ADAPTIVE: LLM chose local fallback "${chosenFile}" (${source.recordCount} records)`);
+                    const data = await loadCSVCohort(source.path);
+                    return {
+                        success: true,
+                        reasoning: `[ADAPTIVE] ${decision.reasoning}`,
+                        apiCall: { tool: 'local_csv', method: 'FILE_READ', path: chosenFile },
+                        result: { data, total_count: data.length, message: `Loaded from local file: ${chosenFile}`, source: 'local_csv_fallback' },
+                        attempt: attempt + 1,
+                        adaptedSource: 'local_csv',
+                    };
+                }
+            }
 
             if (!decision.api_call) {
                 return { success: true, reasoning: decision.reasoning, result: decision.result, noApiCall: true };
@@ -86,22 +186,51 @@ If no API call is needed (e.g., the task is pure analysis), respond:
 
             if (!tool) {
                 lastError = `Could not find API tool matching: ${decision.api_call.operation_id || decision.api_call.path}. Available tools: ${tools.map(t => t.name).join(', ')}`;
+                console.log(`[TOOL-CALLER]   ✗ Tool not found: ${decision.api_call.operation_id || decision.api_call.path}`);
                 continue;
+            }
+
+            console.log(`[TOOL-CALLER]   ▶ Calling ${tool.method} ${tool.path}...`);
+
+            // Inject real data for large payloads (customer IDs, email body)
+            // The LLM uses placeholders to avoid token overflow; we replace them here
+            let apiBody = decision.api_call.body || null;
+            if (apiBody && context._customerIds) {
+                if (apiBody.list_customer_ids === 'FULL_LIST_PLACEHOLDER' || 
+                    (Array.isArray(apiBody.list_customer_ids) && apiBody.list_customer_ids.length < context._customerIds.length)) {
+                    apiBody.list_customer_ids = context._customerIds;
+                    console.log(`[TOOL-CALLER]   📋 Injected ${context._customerIds.length} customer IDs into API body`);
+                }
+                // Ensure body and subject are always present
+                if (!apiBody.body && context._emailBody) {
+                    apiBody.body = context._emailBody;
+                    console.log(`[TOOL-CALLER]   📋 Injected email body into API body`);
+                }
+                if (!apiBody.subject && context._emailSubject) {
+                    apiBody.subject = context._emailSubject;
+                    console.log(`[TOOL-CALLER]   📋 Injected email subject into API body`);
+                }
+                if (!apiBody.send_time && context._sendTime) {
+                    apiBody.send_time = context._sendTime;
+                }
             }
 
             // Execute the dynamically decided API call
             const result = await executeAPICall(
                 tool,
                 decision.api_call.params || {},
-                decision.api_call.body || null,
+                apiBody,
                 apiKey
             );
 
             // Self-reflection: check if the result looks correct
             if (result.status >= 400) {
-                lastError = `API returned error ${result.status}: ${JSON.stringify(result.data)}`;
+                lastError = `API returned error ${result.status}: ${JSON.stringify(result.data).substring(0, 300)}`;
+                console.log(`[TOOL-CALLER]   ✗ API error ${result.status}`);
                 continue; // Retry with error context
             }
+
+            console.log(`[TOOL-CALLER]   ✓ Success on attempt ${attempt + 1}`);
 
             return {
                 success: true,
@@ -113,9 +242,11 @@ If no API call is needed (e.g., the task is pure analysis), respond:
 
         } catch (err) {
             lastError = err.message;
+            console.error(`[TOOL-CALLER]   ✗ Exception on attempt ${attempt + 1}: ${err.message}`);
         }
     }
 
+    console.error(`[TOOL-CALLER] ✗ All ${maxRetries} attempts failed. Last error: ${lastError}`);
     return { success: false, error: lastError, attempts: maxRetries };
 }
 

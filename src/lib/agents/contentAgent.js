@@ -1,14 +1,36 @@
 /**
- * Content Agent - Generates email content variations with AI
+ * Content Agent — Generates email content variations with AI.
+ * 
+ * DESIGN: Receives segment metadata (name, description, count, demographic profile)
+ * but NEVER raw customer data. Content is tailored based on segment characteristics.
  */
 
 import { callLLM } from './llmService';
 
-export async function contentAgent(brief, strategy, cohortData) {
+/**
+ * @param {string} brief - Campaign brief
+ * @param {Object} strategy - Strategy with segments (from strategyAgent)
+ * @param {Object[]} [segmentProfiles] - Demographic profiles per segment (from ruleEngine.buildSegmentProfile)
+ */
+export async function contentAgent(brief, strategy, segmentProfiles = []) {
     const segments = strategy.segments || [];
     const variants = [];
 
+    // Build a lookup of segment profiles by name
+    const profileMap = {};
+    if (Array.isArray(segmentProfiles)) {
+        segmentProfiles.forEach((p, i) => {
+            const segName = segments[i]?.name;
+            if (segName) profileMap[segName] = p;
+        });
+    }
+
     for (const segment of segments) {
+        const profile = profileMap[segment.name] || null;
+        const profileText = profile
+            ? `\nSegment Demographics:\n${JSON.stringify(profile.demographics, null, 2)}`
+            : '';
+
         const systemPrompt = `You are an expert email marketing copywriter for SuperBFSI, an Indian BFSI service provider. You create high-converting email campaigns.
 
 RULES:
@@ -25,7 +47,7 @@ Respond in valid JSON format.`;
 
 Target Segment: "${segment.name}" - ${segment.description}
 Recommended Tone: ${segment.recommendedTone || 'professional'}
-Segment Size: ${segment.count || segment.customerIds?.length || 0} customers
+Segment Size: ${segment.count || segment.customerIds?.length || 0} customers${profileText}
 
 Create 2 email variants for A/B testing:
 {

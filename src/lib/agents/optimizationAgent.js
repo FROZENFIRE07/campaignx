@@ -1,10 +1,17 @@
 /**
- * Optimization Agent - Autonomous re-planning and campaign relaunch
+ * Optimization Agent — Autonomous re-planning and campaign relaunch.
+ * Uses schema-driven approach: LLM outputs segmentation RULES, executed locally.
  */
 
 import { callLLM } from './llmService';
+import { executeSegmentationRules } from './ruleEngine';
+import { analyzeSchema, formatSchemaForLLM } from './schemaAnalyzer';
 
 export async function optimizationAgent(brief, analysis, originalStrategy, cohortData) {
+    // Build schema metadata for LLM — no raw data in prompt
+    const schema = analyzeSchema(cohortData || []);
+    const schemaText = formatSchemaForLLM(schema);
+
     const systemPrompt = `You are an autonomous campaign optimization AI agent for SuperBFSI. Based on performance analysis, you create optimized campaign strategies.
 
 Your optimization must:
@@ -13,7 +20,11 @@ Your optimization must:
 3. Adjust send times based on performance data
 4. Recommend which segments to re-target
 
-CRITICAL: The customer cohort may have changed. Base all decisions on the actual data provided.
+CRITICAL: You receive only schema metadata about the cohort — NOT raw customer data.
+Output segmentation RULES (same format as strategy agent) for new segments.
+The system will execute your rules locally against the full dataset.
+
+Supported rule operators: equals, in, between, gt, gte, lt, lte, contains, not_in, not_equals
 
 Respond in valid JSON format.`;
 
@@ -24,7 +35,10 @@ ${JSON.stringify(analysis, null, 2)}
 
 Original Strategy Segments: ${JSON.stringify((originalStrategy.segments || []).map(s => ({ name: s.name, count: s.count })), null, 2)}
 
-Create an optimization plan:
+Current Cohort Metadata:
+${schemaText}
+
+Create an optimization plan with segmentation RULES (not customer IDs):
 {
   "optimizationType": "micro_segmentation | content_refresh | timing_adjustment | full_relaunch",
   "reasoning": "detailed reasoning for optimization decisions",
@@ -32,12 +46,13 @@ Create an optimization plan:
     {
       "name": "optimized segment name",
       "description": "why this micro-segment",
-      "criteria": { "field": "value" },
+      "rules": [
+        { "field": "exact_field_from_metadata", "operator": "between|in|equals|gt|lt", "values": ["..."] }
+      ],
       "recommendedTone": "tone",
       "recommendedSendTime": "HH:MM IST",
       "newSubject": "optimized email subject",
-      "newBody": "optimized email body with emojis, URL (https://superbfsi.com/xdeposit/explore/), and formatting",
-      "targetCustomerIds": "describe which customers to include"
+      "newBody": "optimized email body with emojis, URL (https://superbfsi.com/xdeposit/explore/), and formatting"
     }
   ],
   "expectedImprovement": {
@@ -50,25 +65,9 @@ Create an optimization plan:
 
     const optimization = await callLLM(systemPrompt, userPrompt, { jsonMode: true, temperature: 0.5 });
 
-    // Map customer IDs for new segments
-    if (optimization.newSegments && cohortData) {
-        optimization.newSegments = optimization.newSegments.map(seg => {
-            const criteria = seg.criteria || {};
-            let matched = [...cohortData];
-
-            for (const [field, value] of Object.entries(criteria)) {
-                if (typeof value === 'string') {
-                    matched = matched.filter(c => {
-                        const cv = String(c[field] || '').toLowerCase();
-                        return cv.includes(value.toLowerCase());
-                    });
-                }
-            }
-
-            seg.customerIds = matched.map(c => c.customer_id);
-            seg.count = seg.customerIds.length;
-            return seg;
-        });
+    // Execute segmentation rules locally — no raw data was sent to LLM
+    if (optimization.newSegments && cohortData && cohortData.length > 0) {
+        optimization.newSegments = executeSegmentationRules(optimization.newSegments, cohortData);
     }
 
     return optimization;

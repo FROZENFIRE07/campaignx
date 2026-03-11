@@ -12,6 +12,7 @@ import { getAPITools, buildToolDescriptions, executeAPICall, getOperationalTools
 
 /**
  * Detect available local cohort fallback files.
+ * Auto-scans for CSV files in project root — no hardcoded filenames.
  * The agent is TOLD about these as options — it decides whether to use them.
  */
 async function detectLocalDataSources() {
@@ -20,51 +21,78 @@ async function detectLocalDataSources() {
     const sources = [];
     const projectRoot = process.cwd();
 
-    // Scan for CSV files that look like cohort data
-    const candidates = [
-        'customer_cohort_5000_v2.csv',
-        'customer_cohort.csv',
-        'cohort_data.csv',
-    ];
-    for (const file of candidates) {
-        const filePath = path.join(projectRoot, file);
-        if (fs.existsSync(filePath)) {
-            // Read header + first 2 rows to describe the file to the LLM
-            const content = fs.readFileSync(filePath, 'utf-8');
-            const lines = content.split('\n').slice(0, 3);
-            const lineCount = content.split('\n').filter(l => l.trim()).length - 1; // minus header
-            sources.push({
-                type: 'csv_file',
-                name: file,
-                path: filePath,
-                recordCount: lineCount,
-                header: lines[0],
-                sampleRow: lines[1],
-            });
+    // Auto-scan project root for any CSV files that look like cohort/customer data
+    try {
+        const files = fs.readdirSync(projectRoot).filter(f => f.endsWith('.csv'));
+        for (const file of files) {
+            const filePath = path.join(projectRoot, file);
+            try {
+                const content = fs.readFileSync(filePath, 'utf-8');
+                const lines = content.split('\n').slice(0, 3);
+                const lineCount = content.split('\n').filter(l => l.trim()).length - 1;
+                if (lineCount > 0) {
+                    sources.push({
+                        type: 'csv_file',
+                        name: file,
+                        path: filePath,
+                        recordCount: lineCount,
+                        header: lines[0],
+                        sampleRow: lines[1],
+                    });
+                }
+            } catch (e) { /* skip unreadable files */ }
         }
-    }
+    } catch (e) { /* skip if dir unreadable */ }
     return sources;
 }
 
 /**
  * Load cohort data from a local CSV file.
+ * Handles quoted fields (commas inside quotes) and basic CSV edge cases.
  */
 async function loadCSVCohort(filePath) {
     const fs = await import('fs');
     const content = fs.readFileSync(filePath, 'utf-8');
     const lines = content.split('\n').filter(l => l.trim());
-    const headers = lines[0].split(',').map(h => h.trim());
+    const headers = parseCSVLine(lines[0]);
 
     return lines.slice(1).map(line => {
-        const vals = line.split(',').map(v => v.trim());
+        const vals = parseCSVLine(line);
         const obj = {};
         headers.forEach((h, i) => {
-            const val = vals[i] || '';
-            // Parse numbers
+            const val = (vals[i] || '').trim();
             obj[h] = !isNaN(val) && val !== '' ? Number(val) : val;
         });
         return obj;
     });
+}
+
+/**
+ * Parse a single CSV line, respecting quoted fields with commas inside.
+ */
+function parseCSVLine(line) {
+    const fields = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+                current += '"'; // escaped quote
+                i++;
+            } else {
+                inQuotes = !inQuotes;
+            }
+        } else if (ch === ',' && !inQuotes) {
+            fields.push(current.trim());
+            current = '';
+        } else {
+            current += ch;
+        }
+    }
+    fields.push(current.trim());
+    return fields;
 }
 
 /**
@@ -105,7 +133,7 @@ ${localSourceDesc}
 
 RULES:
 - Never hardcode API endpoints. Always reason from the documentation.
-- If the task requires sending a campaign, the send_time must be in format 'DD:MM:YY HH:MM:SS' (IST) and must be a future time.
+- If the task requires sending a campaign, read the API docs carefully for the required date/time format for scheduling.
 - API authentication is handled automatically via X-API-Key header.
 - If the API has failed in previous attempts (timeout/error), you should consider using local data sources if available.
 
@@ -193,25 +221,46 @@ If no API call is needed (e.g., the task is pure analysis), respond:
             console.log(`[TOOL-CALLER]   ▶ Calling ${tool.method} ${tool.path}...`);
 
             // Inject real data for large payloads (customer IDs, email body)
-            // The LLM uses placeholders to avoid token overflow; we replace them here
+            // The LLM uses placeholders to avoid token overflow; we replace them here.
+            // Field-name-agnostic: finds fields by value pattern, not hardcoded names.
             let apiBody = decision.api_call.body || null;
             if (apiBody && context._customerIds) {
-                if (apiBody.list_customer_ids === 'FULL_LIST_PLACEHOLDER' || 
-                    (Array.isArray(apiBody.list_customer_ids) && apiBody.list_customer_ids.length < context._customerIds.length)) {
-                    apiBody.list_customer_ids = context._customerIds;
-                    console.log(`[TOOL-CALLER]   📋 Injected ${context._customerIds.length} customer IDs into API body`);
+                // Find the array field that should hold customer IDs (by placeholder or short array)
+                for (const [key, val] of Object.entries(apiBody)) {
+                    if (val === 'FULL_LIST_PLACEHOLDER' ||
+                        (Array.isArray(val) && val.length < context._customerIds.length && val.length <= 10)) {
+                        apiBody[key] = context._customerIds;
+                        console.log(`[TOOL-CALLER]   📋 Injected ${context._customerIds.length} customer IDs into "${key}"`);
+                        break;
+                    }
                 }
-                // Ensure body and subject are always present
-                if (!apiBody.body && context._emailBody) {
-                    apiBody.body = context._emailBody;
-                    console.log(`[TOOL-CALLER]   📋 Injected email body into API body`);
+                // Ensure email body is present — find string fields that should hold the body/subject
+                // by checking if they're empty/missing while we have the values in context
+                if (context._emailBody) {
+                    const bodyField = Object.keys(apiBody).find(k => /^body$/i.test(k)) ||
+                        Object.keys(apiBody).find(k => /message|content|html|text/i.test(k));
+                    if (bodyField && !apiBody[bodyField]) {
+                        apiBody[bodyField] = context._emailBody;
+                        console.log(`[TOOL-CALLER]   📋 Injected email body into "${bodyField}"`);
+                    } else if (!bodyField && !Object.values(apiBody).some(v => typeof v === 'string' && v.length > 100)) {
+                        // No body field found by name, add with the most common name
+                        apiBody.body = context._emailBody;
+                        console.log(`[TOOL-CALLER]   📋 Added email body field`);
+                    }
                 }
-                if (!apiBody.subject && context._emailSubject) {
-                    apiBody.subject = context._emailSubject;
-                    console.log(`[TOOL-CALLER]   📋 Injected email subject into API body`);
+                if (context._emailSubject) {
+                    const subjectField = Object.keys(apiBody).find(k => /^subject$/i.test(k)) ||
+                        Object.keys(apiBody).find(k => /title|header|heading/i.test(k));
+                    if (subjectField && !apiBody[subjectField]) {
+                        apiBody[subjectField] = context._emailSubject;
+                        console.log(`[TOOL-CALLER]   📋 Injected email subject into "${subjectField}"`);
+                    }
                 }
-                if (!apiBody.send_time && context._sendTime) {
-                    apiBody.send_time = context._sendTime;
+                if (context._sendTime) {
+                    const timeField = Object.keys(apiBody).find(k => /send.?time|schedule/i.test(k));
+                    if (timeField && !apiBody[timeField]) {
+                        apiBody[timeField] = context._sendTime;
+                    }
                 }
             }
 

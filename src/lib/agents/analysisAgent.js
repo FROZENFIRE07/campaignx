@@ -1,18 +1,104 @@
 /**
  * Analysis Agent — Analyzes campaign performance metrics.
  * Schema-adaptive: uses schema metadata to detect ID fields and skip identity columns.
+ * Report-adaptive: dynamically detects open/click metric fields from actual data.
  */
 
 import { callLLM } from './llmService';
 import { analyzeSchema, detectIdField, isIdentityField } from './schemaAnalyzer';
 
+/**
+ * Dynamically detect which report fields represent "email opened" and "email clicked".
+ * Inspects field names and values — no hardcoded assumptions about EO/EC.
+ * Fallback chain: name pattern → Y/N boolean fields → OpenAPI spec hints.
+ */
+function detectReportMetricFields(reportRows) {
+    if (!reportRows || reportRows.length === 0) return { openField: null, clickField: null };
+
+    const fields = Object.keys(reportRows[0]);
+
+    // Patterns for open/click fields (case-insensitive)
+    const openPatterns = [/^EO$/i, /email.?open/i, /^opened?$/i, /^is.?open/i, /^open.?flag/i, /^mail.?open/i];
+    const clickPatterns = [/^EC$/i, /email.?click/i, /^clicked?$/i, /^is.?click/i, /^click.?flag/i, /^mail.?click/i];
+
+    let openField = fields.find(f => openPatterns.some(p => p.test(f)));
+    let clickField = fields.find(f => clickPatterns.some(p => p.test(f)));
+
+    // If name patterns didn't match, look for Y/N boolean fields that aren't known non-metric fields
+    if (!openField || !clickField) {
+        const knownNonMetric = new Set(['subject', 'body', 'campaign_id', 'customer_id', 'send_time',
+            'invokation_date', 'invokation_time', 'email', 'name']);
+        const booleanFields = fields.filter(f => {
+            if (knownNonMetric.has(f.toLowerCase())) return false;
+            // Check if most values are Y/N or true/false or 1/0
+            const sample = reportRows.slice(0, 50);
+            const values = new Set(sample.map(r => String(r[f]).toUpperCase()));
+            return (values.size <= 3 && (values.has('Y') || values.has('TRUE') || values.has('1')));
+        });
+
+        // If exactly 2 boolean fields found, assign by order (open usually comes before click)
+        if (booleanFields.length >= 2) {
+            if (!openField) openField = booleanFields[0];
+            if (!clickField) clickField = booleanFields[1];
+        } else if (booleanFields.length === 1) {
+            if (!openField) openField = booleanFields[0];
+        }
+    }
+
+    console.log(`[ANALYSIS] Detected report metric fields — open: "${openField}", click: "${clickField}"`);
+    return { openField, clickField };
+}
+
+/**
+ * Check if a report row's metric field indicates "true" (Y, true, 1, yes).
+ */
+function isMetricTrue(row, field) {
+    if (!field || row[field] === undefined) return false;
+    const val = String(row[field]).toUpperCase();
+    return val === 'Y' || val === 'YES' || val === 'TRUE' || val === '1';
+}
+
+/**
+ * Detect report ID field by inspecting actual report data.
+ * Uses schema-based detection on the report data itself, then falls back to
+ * matching the cohort's ID field name, then broad pattern matching.
+ */
+function detectReportIdField(reportRows, cohortIdField) {
+    if (!reportRows || reportRows.length === 0) return cohortIdField || 'customer_id';
+
+    const fields = Object.keys(reportRows[0]);
+
+    // 1. Direct match with cohort ID field
+    const directMatch = fields.find(f => f === cohortIdField);
+    if (directMatch) return directMatch;
+
+    // 2. Run schema-based ID detection on the report data itself
+    const reportSchema = analyzeSchema(reportRows);
+    const reportIdField = detectIdField(reportSchema);
+    if (reportIdField && fields.includes(reportIdField)) return reportIdField;
+
+    // 3. Broad pattern matching
+    const idMatch = fields.find(f => /customer_?id|cust_?id|user_?id|client_?id/i.test(f))
+        || fields.find(f => /^id$|_id$/i.test(f));
+    if (idMatch) return idMatch;
+
+    // 4. Last resort: look for field with values matching cohort ID patterns (e.g., CUST0001)
+    const sampleVal = String(reportRows[0][fields[0]] || '');
+    if (/^[A-Z]{2,}[\-_]?\d+$/i.test(sampleVal)) return fields[0];
+
+    return cohortIdField || fields[0];
+}
+
 export async function analysisAgent(reportData, originalStrategy, cohortData) {
     const reportRows = reportData?.data || [];
 
+    // Dynamically detect metric fields — no hardcoded EO/EC
+    const { openField, clickField } = detectReportMetricFields(reportRows);
+
     // Compute metrics
     const totalSent = reportRows.length;
-    const totalOpened = reportRows.filter(r => r.EO === 'Y').length;
-    const totalClicked = reportRows.filter(r => r.EC === 'Y').length;
+    const totalOpened = reportRows.filter(r => isMetricTrue(r, openField)).length;
+    const totalClicked = reportRows.filter(r => isMetricTrue(r, clickField)).length;
     const openRate = totalSent > 0 ? ((totalOpened / totalSent) * 100).toFixed(2) : 0;
     const clickRate = totalSent > 0 ? ((totalClicked / totalSent) * 100).toFixed(2) : 0;
 
@@ -22,8 +108,8 @@ export async function analysisAgent(reportData, originalStrategy, cohortData) {
         const key = r.subject || 'unknown';
         if (!bySubject[key]) bySubject[key] = { total: 0, opened: 0, clicked: 0 };
         bySubject[key].total++;
-        if (r.EO === 'Y') bySubject[key].opened++;
-        if (r.EC === 'Y') bySubject[key].clicked++;
+        if (isMetricTrue(r, openField)) bySubject[key].opened++;
+        if (isMetricTrue(r, clickField)) bySubject[key].clicked++;
     });
 
     // Build schema from cohort to dynamically detect ID field and identity columns
@@ -34,13 +120,9 @@ export async function analysisAgent(reportData, originalStrategy, cohortData) {
     const cohortMap = {};
     (cohortData || []).forEach(c => { cohortMap[c[idField]] = c; });
 
-    // Detect which report field maps to customer ID (may be 'customer_id' or match cohort's ID field)
-    const reportIdField = reportRows[0]
-        ? (Object.keys(reportRows[0]).find(f => f === idField)
-            || Object.keys(reportRows[0]).find(f => /customer_?id/i.test(f))
-            || Object.keys(reportRows[0]).find(f => /_id$/i.test(f))
-            || 'customer_id')
-        : 'customer_id';
+    // Detect which report field maps to customer ID — uses schema detection, no hardcoded fallback
+    const reportIdField = detectReportIdField(reportRows, idField);
+    console.log(`[ANALYSIS] Report ID field: "${reportIdField}", Cohort ID field: "${idField}"`);
 
     // Segment performance analysis — skip identity fields using schema
     const segmentPerf = {};
@@ -56,8 +138,8 @@ export async function analysisAgent(reportData, originalStrategy, cohortData) {
             const key = `${field}:${value}`;
             if (!segmentPerf[key]) segmentPerf[key] = { total: 0, opened: 0, clicked: 0, field, value };
             segmentPerf[key].total++;
-            if (r.EO === 'Y') segmentPerf[key].opened++;
-            if (r.EC === 'Y') segmentPerf[key].clicked++;
+            if (isMetricTrue(r, openField)) segmentPerf[key].opened++;
+            if (isMetricTrue(r, clickField)) segmentPerf[key].clicked++;
         }
     });
 

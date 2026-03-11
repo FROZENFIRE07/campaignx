@@ -105,7 +105,10 @@ Plan the steps needed to execute this campaign. What APIs do we need to call and
 
     let cohortData = [];
     if (cohortResult.success) {
-        cohortData = cohortResult.result?.data || [];
+        // Robust data extraction: handle both { data: [...] } wrapper and direct array responses
+        const resultPayload = cohortResult.result;
+        cohortData = Array.isArray(resultPayload) ? resultPayload
+            : (resultPayload?.data || resultPayload?.records || resultPayload?.customers || []);
         const source = cohortResult.adaptedSource || 'api';
         console.log(`[ORCHESTRATOR] Cohort source: ${source}, records: ${cohortData.length}`);
         if (cohortData[0]) {
@@ -288,14 +291,19 @@ Use the appropriate campaign sending API discovered from the documentation.`,
                 apiUsed: sendResult.apiCall,
             });
         } else {
-            // Fallback: if agentic send failed, try direct API call with known structure
+            // Fallback: if agentic send failed, try direct API call via dynamic discovery
             console.log(`[ORCHESTRATOR] Agentic send failed for "${variant.targetSegment}": ${sendResult.error}`);
             console.log(`[ORCHESTRATOR] Attempting direct send as recovery...`);
             try {
                 const { getAPITools, executeAPICall, getOperationalTools } = await import('./apiDiscovery');
                 const { tools: allTools } = await getAPITools();
                 const tools = getOperationalTools(allTools);
-                const sendTool = tools.find(t => t.path.includes('send_campaign') && t.method === 'POST');
+                // Dynamic discovery: find POST tool by description/tag/name patterns, not hardcoded path
+                const sendTool = tools.find(t => t.method === 'POST' && (
+                    /send|campaign|dispatch|email|deliver/i.test(t.path) ||
+                    /send|campaign|dispatch|email|deliver/i.test(t.name || '') ||
+                    /send|campaign|dispatch|email|deliver/i.test(t.description || '')
+                ));
                 if (sendTool) {
                     const apiKey = process.env.CAMPAIGNX_API_KEY;
                     const directResult = await executeAPICall(sendTool, {}, {
@@ -336,7 +344,7 @@ Use the appropriate campaign sending API discovered from the documentation.`,
 export async function fetchReport(campaignId) {
     const reportResult = await agenticToolCall(
         `Fetch the performance report for campaign ID: "${campaignId}". I need to know the open rates and click rates for each customer.`,
-        { additionalInfo: `The campaign ID is: ${campaignId}. I need the report data including EO (email opened) and EC (email clicked) flags.` }
+        { additionalInfo: `The campaign ID is: ${campaignId}. I need the full report data including all performance metric fields.` }
     );
 
     if (reportResult.success) {
@@ -364,8 +372,8 @@ export async function analysisAndOptimization(campaignId, brief, originalStrateg
     const report = await fetchReport(campaignId);
 
     log('analysis', 'report_fetched', {
-        reasoning: `Report fetched: ${report.total_rows} rows`,
-        output: { totalRows: report.total_rows }
+        reasoning: `Report fetched: ${report.total_rows ?? report.total_count ?? 'unknown'} rows`,
+        output: { totalRows: report.total_rows ?? report.total_count }
     });
 
     // If cohort data not provided, re-fetch it (ADAPTIVE — handles cohort changes)
@@ -377,7 +385,9 @@ export async function analysisAndOptimization(campaignId, brief, originalStrateg
             'Fetch the current customer cohort data for analysis. The cohort may have changed since the campaign was sent.',
         );
         if (cohortResult.success) {
-            cohortData = cohortResult.result?.data || [];
+            const payload = cohortResult.result;
+            cohortData = Array.isArray(payload) ? payload
+                : (payload?.data || payload?.records || payload?.customers || []);
         }
     }
 

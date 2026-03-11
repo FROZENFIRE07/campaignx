@@ -133,7 +133,8 @@ export async function executeAPICall(tool, params = {}, body = null, apiKey = nu
         const data = await response.json();
         const dataSize = JSON.stringify(data).length;
         console.log(`[API-CALL]    Response: ${dataSize} bytes, keys: ${Object.keys(data).join(', ')}`);
-        if (data.total_count !== undefined) console.log(`[API-CALL]    Records: ${data.total_count}`);
+        const recordCount = data.total_count ?? data.total_rows ?? data.count;
+        if (recordCount !== undefined) console.log(`[API-CALL]    Records: ${recordCount}`);
         return { status: response.status, data };
     } catch (err) {
         clearTimeout(timeoutId);

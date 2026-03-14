@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>CampaignX Agent Console - Runtime Logs</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#6467f2",
+                        "background-light": "#f6f6f8",
+                        "background-dark": "#0a0a14",
+                        "terminal-accent": "#1a1b2e",
+                    },
+                    fontFamily: {
+                        "display": ["Inter"],
+                        "mono": ["JetBrains Mono"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        .frosted-glass {
+            background: rgba(26, 27, 46, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .log-line:hover {
+            background: rgba(100, 103, 242, 0.05);
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 min-h-screen flex flex-col">
+<header class="flex items-center justify-between whitespace-nowrap border-b border-slate-200 dark:border-primary/20 bg-background-light dark:bg-background-dark px-10 py-3 sticky top-0 z-50">
+<div class="flex items-center gap-4">
+<div class="size-8 bg-primary rounded flex items-center justify-center text-white">
+<span class="material-symbols-outlined">terminal</span>
+</div>
+<div>
+<h2 class="text-slate-900 dark:text-white text-lg font-bold leading-tight tracking-tight">CampaignX Agent Console</h2>
+<p class="text-xs text-slate-500 dark:text-primary/60 font-mono">v2.4.0-stable • system_active</p>
+</div>
+</div>
+<div class="flex flex-1 justify-end gap-6 items-center">
+<label class="flex flex-col min-w-40 h-10 max-w-64">
+<div class="flex w-full flex-1 items-stretch rounded-lg h-full bg-slate-200/50 dark:bg-primary/10 border border-transparent focus-within:border-primary/50 transition-all">
+<div class="text-slate-500 dark:text-slate-400 flex items-center justify-center pl-4">
+<span class="material-symbols-outlined text-[20px]">search</span>
+</div>
+<input class="form-input flex w-full min-w-0 flex-1 border-none bg-transparent focus:ring-0 text-sm placeholder:text-slate-500 dark:placeholder:text-slate-400" placeholder="Filter logs..." value=""/>
+</div>
+</label>
+<div class="flex gap-2">
+<button class="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-200/50 dark:bg-primary/10 text-slate-700 dark:text-slate-300 hover:bg-primary/20 transition-colors">
+<span class="material-symbols-outlined text-[20px]">settings</span>
+</button>
+<button class="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-200/50 dark:bg-primary/10 text-slate-700 dark:text-slate-300 hover:bg-primary/20 transition-colors">
+<span class="material-symbols-outlined text-[20px]">notifications</span>
+</button>
+</div>
+<div class="h-10 w-10 rounded-full border-2 border-primary/30 p-0.5">
+<div class="h-full w-full rounded-full bg-cover bg-center" data-alt="User avatar placeholder" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDtjKrycHxIPxXZyjWU1PbnxlqbuZjVZh0ltCvr5Hvkpyng3eX5iSRy7ZXJDpJTUXX_jsOb5E0iRtFY16wQ4QKxAwOydM2Y4yfrQdLxzY15togpiST6rmzLnIiOEPsl46gCuiAUSZGiKBSZFK-HppdGJBZw5jZfkygZPkA7PMyG4FfpYgHxJPLOMk0HErQHUnKSaxTd3ezu-VekQn6CeY4It03UZYI5hblstpciIL9e8vFoh5vmcy79PFOLk17x3F9obB-25nFBkZo')"></div>
+</div>
+</div>
+</header>
+<div class="flex flex-1 overflow-hidden">
+<aside class="w-64 border-r border-slate-200 dark:border-primary/10 flex flex-col p-4 gap-6 bg-slate-50 dark:bg-background-dark/50">
+<nav class="flex flex-col gap-1">
+<a class="flex items-center gap-3 px-3 py-2 text-slate-600 dark:text-slate-400 hover:bg-primary/10 hover:text-primary rounded-lg transition-all group" href="#">
+<span class="material-symbols-outlined group-hover:scale-110 transition-transform">dashboard</span>
+<span class="text-sm font-medium">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-600 dark:text-slate-400 hover:bg-primary/10 hover:text-primary rounded-lg transition-all group" href="#">
+<span class="material-symbols-outlined group-hover:scale-110 transition-transform">smart_toy</span>
+<span class="text-sm font-medium">Agents</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 bg-primary text-white rounded-lg shadow-lg shadow-primary/20" href="#">
+<span class="material-symbols-outlined">terminal</span>
+<span class="text-sm font-medium">Runtime Logs</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-600 dark:text-slate-400 hover:bg-primary/10 hover:text-primary rounded-lg transition-all group" href="#">
+<span class="material-symbols-outlined group-hover:scale-110 transition-transform">history</span>
+<span class="text-sm font-medium">History</span>
+</a>
+</nav>
+<div class="mt-auto">
+<div class="p-4 rounded-xl bg-primary/5 border border-primary/10">
+<p class="text-xs font-bold text-primary uppercase tracking-wider mb-2">Agent Status</p>
+<div class="space-y-3">
+<div class="flex items-center justify-between">
+<span class="text-xs text-slate-500">Strategy</span>
+<span class="h-2 w-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+</div>
+<div class="flex items-center justify-between">
+<span class="text-xs text-slate-500">Content</span>
+<span class="h-2 w-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+</div>
+<div class="flex items-center justify-between">
+<span class="text-xs text-slate-500">Analyzer</span>
+<span class="h-2 w-2 rounded-full bg-amber-500 animate-pulse"></span>
+</div>
+</div>
+</div>
+</div>
+</aside>
+<main class="flex-1 flex flex-col p-6 overflow-hidden relative">
+<div class="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/10 pointer-events-none"></div>
+<div class="flex items-center justify-between mb-6 z-10">
+<div>
+<h1 class="text-2xl font-bold tracking-tight mb-1">Agent Runtime Logs</h1>
+<p class="text-slate-500 dark:text-slate-400 text-sm">Monitoring real-time LLM execution and tool interactions.</p>
+</div>
+<div class="flex gap-3">
+<div class="flex items-center bg-slate-200/50 dark:bg-primary/10 rounded-lg p-1 border border-primary/10">
+<button class="px-4 py-1.5 text-xs font-bold bg-primary text-white rounded-md shadow-sm">Live</button>
+<button class="px-4 py-1.5 text-xs font-bold text-slate-500 dark:text-slate-400">Paused</button>
+</div>
+<button class="flex items-center gap-2 px-4 py-2 bg-slate-200/50 dark:bg-primary/10 rounded-lg text-sm font-bold border border-primary/10 hover:border-primary/30 transition-all">
+<span class="material-symbols-outlined text-[18px]">download</span>
+                        Export
+                    </button>
+<button class="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-500 rounded-lg text-sm font-bold border border-red-500/20 hover:bg-red-500 hover:text-white transition-all">
+<span class="material-symbols-outlined text-[18px]">delete</span>
+                        Clear
+                    </button>
+</div>
+</div>
+<div class="flex gap-3 mb-4 z-10">
+<button class="flex items-center gap-2 px-3 py-1.5 bg-primary/20 text-primary border border-primary/30 rounded-full text-xs font-bold">
+<span class="h-2 w-2 rounded-full bg-primary"></span>
+                    All Agents
+                </button>
+<button class="flex items-center gap-2 px-3 py-1.5 bg-slate-200/50 dark:bg-primary/5 text-slate-600 dark:text-slate-400 border border-transparent hover:border-primary/20 rounded-full text-xs font-bold">
+<span class="h-2 w-2 rounded-full bg-purple-500"></span>
+                    Strategy
+                </button>
+<button class="flex items-center gap-2 px-3 py-1.5 bg-slate-200/50 dark:bg-primary/5 text-slate-600 dark:text-slate-400 border border-transparent hover:border-primary/20 rounded-full text-xs font-bold">
+<span class="h-2 w-2 rounded-full bg-blue-500"></span>
+                    Content
+                </button>
+<button class="flex items-center gap-2 px-3 py-1.5 bg-slate-200/50 dark:bg-primary/5 text-slate-600 dark:text-slate-400 border border-transparent hover:border-primary/20 rounded-full text-xs font-bold">
+<span class="h-2 w-2 rounded-full bg-green-500"></span>
+                    Tool_Calls
+                </button>
+</div>
+<div class="flex-1 frosted-glass rounded-xl overflow-hidden flex flex-col shadow-2xl z-10 border-primary/20">
+<div class="flex items-center justify-between px-4 py-2 bg-slate-900/50 border-b border-primary/10">
+<div class="flex gap-1.5">
+<div class="size-3 rounded-full bg-red-500/50"></div>
+<div class="size-3 rounded-full bg-amber-500/50"></div>
+<div class="size-3 rounded-full bg-green-500/50"></div>
+</div>
+<div class="text-[10px] font-mono text-slate-500 uppercase tracking-widest">terminal — campaign-x-v2.4 — 80x24</div>
+<div class="size-4"></div>
+</div>
+<div class="flex-1 overflow-y-auto p-4 font-mono text-sm leading-relaxed scrollbar-thin scrollbar-thumb-primary/20">
+<div class="space-y-1">
+<div class="log-line group flex gap-4 transition-colors">
+<span class="text-slate-600 shrink-0 select-none w-20">14:20:01</span>
+<span class="text-slate-400 shrink-0 select-none">[System]</span>
+<span class="text-slate-300">Initializing CampaignX core runtime...</span>
+</div>
+<div class="log-line group flex gap-4 transition-colors">
+<span class="text-slate-600 shrink-0 select-none w-20">14:20:02</span>
+<span class="text-slate-400 shrink-0 select-none">[System]</span>
+<span class="text-slate-300">All neural engines connected. Ready for deployment.</span>
+</div>
+<div class="log-line group flex gap-4 transition-colors">
+<span class="text-slate-600 shrink-0 select-none w-20">14:20:05</span>
+<span class="text-purple-400 shrink-0 select-none font-bold">[Strategy]</span>
+<span class="text-slate-300">Analyzing market trends for Q4 consumer electronics...</span>
+</div>
+<div class="log-line group flex gap-4 transition-colors">
+<span class="text-slate-600 shrink-0 select-none w-20">14:20:08</span>
+<span class="text-green-400 shrink-0 select-none font-bold">[Tool_Call]</span>
+<span class="text-green-300/80">executing search_google_trends(query="eco-friendly gadgets", timeframe="30d")</span>
+</div>
+<div class="log-line group flex gap-4 transition-colors">
+<span class="text-slate-600 shrink-0 select-none w-20">14:20:10</span>
+<span class="text-green-400 shrink-0 select-none font-bold">[Tool_Call]</span>
+<span class="text-slate-400 italic">Response: { status: 200, results: 142, trend: "upwards" }</span>
+</div>
+<div class="log-line group flex gap-4 transition-colors">
+<span class="text-slate-600 shrink-0 select-none w-20">14:20:12</span>
+<span class="text-purple-400 shrink-0 select-none font-bold">[Strategy]</span>
+<span class="text-slate-300">Identified key pivot: "Sustainable Tech as Lifestyle". Passing to content agent.</span>
+</div>
+<div class="log-line group flex gap-4 transition-colors">
+<span class="text-slate-600 shrink-0 select-none w-20">14:20:15</span>
+<span class="text-blue-400 shrink-0 select-none font-bold">[Content]</span>
+<span class="text-slate-300">Drafting 5x Instagram carousel posts focusing on material longevity.</span>
+</div>
+<div class="log-line group flex gap-4 transition-colors">
+<span class="text-slate-600 shrink-0 select-none w-20">14:20:16</span>
+<span class="text-blue-400 shrink-0 select-none font-bold">[Content]</span>
+<span class="text-blue-300/80">Generating image prompt: "Minimalist solar-powered charger, high-end design, sustainable bamboo..."</span>
+</div>
+<div class="log-line group flex gap-4 transition-colors">
+<span class="text-slate-600 shrink-0 select-none w-20">14:20:18</span>
+<span class="text-green-400 shrink-0 select-none font-bold">[Tool_Call]</span>
+<span class="text-green-300/80">executing dall_e_3_generate(prompt="...", style="photorealistic")</span>
+</div>
+<div class="log-line group flex gap-4 transition-colors">
+<span class="text-slate-600 shrink-0 select-none w-20">14:20:25</span>
+<span class="text-purple-400 shrink-0 select-none font-bold">[Strategy]</span>
+<span class="text-slate-300">Optimizing spend distribution across LinkedIn and Meta based on CTR forecast.</span>
+</div>
+<div class="log-line group flex gap-4 transition-colors border-l-2 border-primary bg-primary/10">
+<span class="text-primary shrink-0 select-none w-20 pl-2">14:20:30</span>
+<span class="text-slate-400 shrink-0 select-none">[System]</span>
+<span class="text-primary font-bold">Checkpoint reached: Campaign Alpha-7 ready for review.</span>
+</div>
+<div class="log-line group flex gap-4 transition-colors">
+<span class="text-slate-600 shrink-0 select-none w-20">14:20:32</span>
+<span class="text-blue-400 shrink-0 select-none font-bold">[Content]</span>
+<span class="text-slate-300">Refining ad copy to include "Limited Time" urgency signals.</span>
+</div>
+<div class="log-line group flex gap-4 transition-colors">
+<span class="text-slate-600 shrink-0 select-none w-20">14:20:35</span>
+<span class="text-green-400 shrink-0 select-none font-bold">[Tool_Call]</span>
+<span class="text-green-300/80">executing write_to_database(record_id="C_ALPHA_7", status="REVIEW")</span>
+</div>
+<div class="log-line group flex gap-4 transition-colors">
+<span class="text-slate-600 shrink-0 select-none w-20">14:20:40</span>
+<span class="text-purple-400 shrink-0 select-none font-bold">[Strategy]</span>
+<span class="text-slate-300">Awaiting user confirmation to proceed to deployment phase...</span>
+</div>
+<div class="log-line group flex gap-4 mt-4 animate-pulse">
+<span class="text-primary shrink-0 select-none w-20">14:20:42</span>
+<span class="text-slate-300">_</span>
+</div>
+</div>
+</div>
+<div class="px-4 py-3 bg-slate-900/50 border-t border-primary/10 flex items-center gap-4">
+<span class="text-primary text-sm font-mono select-none">&gt;</span>
+<input class="flex-1 bg-transparent border-none focus:ring-0 text-sm font-mono text-slate-300 placeholder:text-slate-600 p-0" placeholder="Type a command (e.g., /pause, /clear, /agent restart strategy)..." type="text"/>
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2">
+<span class="text-[10px] text-slate-500 uppercase tracking-widest">Memory</span>
+<div class="w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+<div class="h-full bg-primary w-[65%]"></div>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<span class="text-[10px] text-slate-500 uppercase tracking-widest">CPU</span>
+<div class="w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+<div class="h-full bg-green-500 w-[12%]"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

@@ -32,20 +32,29 @@ export default function AIStudio() {
   const logContainer = useRef(null);
 
   useEffect(() => {
-    fetch('/api/logs')
-      .then((r) => r.json())
-      .then((data) => {
-        const apiLogs = (data.logs || []).map((l) => ({
-          timestamp: l.createdAt
-            ? new Date(l.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-            : '--:--:--',
-          agent: l.agent || 'system',
-          step: l.step || '',
-          reasoning: l.reasoning || '',
-          createdAt: l.createdAt || '',
+    Promise.all([
+      fetch('/api/logs').then((r) => r.json()),
+      fetch('/api/agent').then((r) => r.json()),
+    ])
+      .then(([logsData, agentData]) => {
+        const apiLogs = (logsData.logs || []).map((l) => ({
+          timestamp: new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          tag: l.agentType || 'system',
+          text: l.message || l.action || '',
           type: l.type || 'info',
         }));
-        setLogs(apiLogs.length > 0 ? apiLogs : defaultLogs());
+
+        const campaignLogs = (agentData.campaigns || []).flatMap((c) =>
+          (c.agentActivity || []).map((a) => ({
+            timestamp: new Date(a.timestamp || c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            tag: a.agentType || 'system',
+            text: a.message || a.action || '',
+            type: 'info',
+          }))
+        );
+
+        const merged = [...apiLogs, ...campaignLogs].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+        setLogs(merged.length > 0 ? merged : defaultLogs());
       })
       .catch(() => setLogs(defaultLogs()))
       .finally(() => setLoading(false));
@@ -59,10 +68,10 @@ export default function AIStudio() {
 
   const filteredLogs = activeFilter === 'all'
     ? logs
-    : logs.filter((l) => l.agent?.toLowerCase().includes(activeFilter));
+    : logs.filter((l) => l.tag?.toLowerCase().includes(activeFilter));
 
-  const tagClass = (agent) => {
-    const t = agent?.toLowerCase() || '';
+  const tagClass = (tag) => {
+    const t = tag?.toLowerCase() || '';
     if (t.includes('strategy')) return 'terminal-tag-strategy';
     if (t.includes('content')) return 'terminal-tag-content';
     if (t.includes('tool') || t.includes('optim')) return 'terminal-tag-tool';
@@ -70,7 +79,7 @@ export default function AIStudio() {
   };
 
   const textClass = (log) => {
-    const t = log.agent?.toLowerCase() || '';
+    const t = log.tag?.toLowerCase() || '';
     if (t.includes('tool') || t.includes('optim')) return 'terminal-text-tool';
     if (log.type === 'response') return 'terminal-text-response';
     return 'terminal-text';
@@ -138,7 +147,7 @@ export default function AIStudio() {
         </div>
 
         {/* Agent Filter Pills */}
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(163,230,53,0.1)', display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(99,102,241,0.1)', display: 'flex', alignItems: 'center', gap: 16 }}>
           <div className="agent-pills">
             {AGENT_FILTERS.map((f) => (
               <button
@@ -164,9 +173,8 @@ export default function AIStudio() {
             filteredLogs.map((log, i) => (
               <div key={i} className={`terminal-line ${log.type === 'highlight' ? 'highlight' : ''}`}>
                 <span className="terminal-timestamp">{log.timestamp}</span>
-                <span className={`terminal-tag ${tagClass(log.agent)}`}>[{log.agent}]</span>
-                {log.step && <span style={{ color: 'var(--accent-primary)', fontWeight: 600, marginRight: 6 }}>[{log.step}]</span>}
-                <span className={textClass(log)}>{log.reasoning}</span>
+                <span className={`terminal-tag ${tagClass(log.tag)}`}>[{log.tag}]</span>
+                <span className={textClass(log)}>{log.text}</span>
               </div>
             ))
           ) : (
@@ -203,17 +211,17 @@ export default function AIStudio() {
 
 function defaultLogs() {
   return [
-    { timestamp: '14:32:01', agent: 'System', step: 'init', reasoning: 'Initializing CampaignX Multi-Agent Runtime v4.2.1...', createdAt: new Date().toISOString(), type: 'info' },
-    { timestamp: '14:32:02', agent: 'System', step: 'init', reasoning: 'Loading strategy, content, and analysis agent modules.', createdAt: new Date().toISOString(), type: 'info' },
-    { timestamp: '14:32:03', agent: 'System', step: 'connect', reasoning: 'Connected to LLM endpoint: groq/llama-3.3-70b-versatile', createdAt: new Date().toISOString(), type: 'highlight' },
-    { timestamp: '14:32:04', agent: 'System', step: 'ready', reasoning: 'All agents initialized. Runtime ready.', createdAt: new Date().toISOString(), type: 'info' },
-    { timestamp: '14:32:10', agent: 'Strategy', step: 'analyze', reasoning: 'Received campaign brief. Analyzing target audience and market positioning...', createdAt: new Date().toISOString(), type: 'info' },
-    { timestamp: '14:32:15', agent: 'Strategy', step: 'segment', reasoning: 'Market analysis complete. Identified 3 key segments: Enterprise SaaS, Mid-Market, SMB.', createdAt: new Date().toISOString(), type: 'info' },
-    { timestamp: '14:32:20', agent: 'Tool_Call', step: 'discover', reasoning: 'POST /api/discover → 200 OK (discovered 12 API tools)', createdAt: new Date().toISOString(), type: 'info' },
-    { timestamp: '14:32:25', agent: 'Content', step: 'generate', reasoning: 'Generating email variants for segment "Enterprise SaaS"...', createdAt: new Date().toISOString(), type: 'info' },
-    { timestamp: '14:32:30', agent: 'Content', step: 'complete', reasoning: 'Generated 3 email variants. Subject lines optimized for open rate.', createdAt: new Date().toISOString(), type: 'info' },
-    { timestamp: '14:32:35', agent: 'Tool_Call', step: 'fetch', reasoning: 'GET /api/agent → 200 OK (fetched 8 active campaigns)', createdAt: new Date().toISOString(), type: 'info' },
-    { timestamp: '14:32:40', agent: 'Strategy', step: 'schedule', reasoning: 'Recommending send window: Tuesday 10:00 AM EST based on historical data.', createdAt: new Date().toISOString(), type: 'info' },
-    { timestamp: '14:32:45', agent: 'System', step: 'done', reasoning: 'Campaign orchestration complete. Awaiting human approval.', createdAt: new Date().toISOString(), type: 'highlight' },
+    { timestamp: '14:32:01', tag: 'System', text: 'Initializing CampaignX Multi-Agent Runtime v4.2.1...', type: 'info' },
+    { timestamp: '14:32:02', tag: 'System', text: 'Loading strategy, content, and analysis agent modules.', type: 'info' },
+    { timestamp: '14:32:03', tag: 'System', text: 'Connected to LLM endpoint: groq/llama-3.3-70b-versatile', type: 'highlight' },
+    { timestamp: '14:32:04', tag: 'System', text: 'All agents initialized. Runtime ready.', type: 'info' },
+    { timestamp: '14:32:10', tag: 'Strategy', text: 'Received campaign brief. Analyzing target audience and market positioning...', type: 'info' },
+    { timestamp: '14:32:15', tag: 'Strategy', text: 'Market analysis complete. Identified 3 key segments: Enterprise SaaS, Mid-Market, SMB.', type: 'info' },
+    { timestamp: '14:32:20', tag: 'Tool_Call', text: 'POST /api/discover → 200 OK (discovered 12 API tools)', type: 'info' },
+    { timestamp: '14:32:25', tag: 'Content', text: 'Generating email variants for segment "Enterprise SaaS"...', type: 'info' },
+    { timestamp: '14:32:30', tag: 'Content', text: 'Generated 3 email variants. Subject lines optimized for open rate.', type: 'info' },
+    { timestamp: '14:32:35', tag: 'Tool_Call', text: 'GET /api/agent → 200 OK (fetched 8 active campaigns)', type: 'info' },
+    { timestamp: '14:32:40', tag: 'Strategy', text: 'Recommending send window: Tuesday 10:00 AM EST based on historical data.', type: 'info' },
+    { timestamp: '14:32:45', tag: 'System', text: 'Campaign orchestration complete. Awaiting human approval.', type: 'highlight' },
   ];
 }

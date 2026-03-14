@@ -46,22 +46,30 @@ export default function NewCampaign() {
       const response = await fetch('/api/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'start', brief }),
+        body: JSON.stringify({ action: 'run', brief }),
       });
       const data = await response.json();
       clearInterval(interval);
       setOrchProgress(100);
       setResult(data);
 
-      // Use real API response fields for variants preview
-      const planVariants = data.plan?.contentVariants || [];
-      setVariants(planVariants.map((v, i) => ({
-        name: v.variantName || `Variant ${String.fromCharCode(65 + i)}`,
-        match: v.matchScore ? `${v.matchScore}%` : '—',
-        subject: v.subject || 'Untitled',
-        body: v.body?.substring(0, 200) || '',
-        segment: v.targetSegment || 'General',
-      })));
+      // Generate sample variants
+      setVariants([
+        {
+          name: 'Variant A',
+          match: '94%',
+          subject: data.emailContent?.subject || 'Re: Quick question about your Q4 strategy',
+          body: data.emailContent?.body?.substring(0, 200) || 'Hi {{first_name}}, I noticed your team recently expanded into new markets. Our AI-powered platform helps companies like yours...',
+          segment: 'Enterprise SaaS',
+        },
+        {
+          name: 'Variant B',
+          match: '87%',
+          subject: 'Boost your campaign ROI by 40% — here\'s how',
+          body: 'Hi {{first_name}}, Teams using AI-driven campaigns see an average 40% increase in ROI. We\'d love to show you how CampaignX can help...',
+          segment: 'Mid-Market',
+        },
+      ]);
 
       setTimeout(() => { setStep(2); setOrchestrating(false); }, 1200);
     } catch (err) {
@@ -137,7 +145,7 @@ export default function NewCampaign() {
         <div style={{ flex: 1 }} />
 
         {/* Progress indicator */}
-        <div style={{ padding: 16, borderRadius: 12, background: 'rgba(163,230,53,0.05)', border: '1px solid rgba(163,230,53,0.1)' }}>
+        <div style={{ padding: 16, borderRadius: 12, background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.1)' }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-primary)', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8 }}>Progress</div>
           <div style={{ display: 'flex', gap: 3 }}>
             {STEPS.map((_, i) => (
@@ -161,7 +169,7 @@ export default function NewCampaign() {
         {step === 0 && (
           <div className="glass" style={{ padding: 32 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-              <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(163,230,53,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(99,102,241,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <span className="material-symbols-outlined" style={{ color: 'var(--accent-primary)', fontSize: 22 }}>auto_awesome</span>
               </div>
               <div>
@@ -216,7 +224,7 @@ export default function NewCampaign() {
                         {node.label}
                       </span>
                       <span className="orch-badge" style={{
-                        background: isDone ? 'rgba(16,185,129,0.2)' : isActive ? 'rgba(163,230,53,0.2)' : 'rgba(255,255,255,0.05)',
+                        background: isDone ? 'rgba(16,185,129,0.2)' : isActive ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.05)',
                         color: isDone ? 'var(--accent-green)' : isActive ? 'var(--accent-primary)' : 'var(--text-muted)',
                       }}>
                         {isDone ? 'Complete' : isActive ? 'Processing' : 'Queued'}
@@ -290,54 +298,34 @@ export default function NewCampaign() {
             </div>
 
             {/* Strategy Summary */}
-            {result?.plan?.strategy && (
+            {result?.campaign?.strategy && (
               <div className="glass" style={{ padding: 24 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
                   <span className="material-symbols-outlined" style={{ color: 'var(--accent-primary)', fontSize: 20 }}>psychology</span>
                   <h4 style={{ fontWeight: 700 }}>Strategy Summary</h4>
                 </div>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-                  {typeof result.plan.strategy === 'string' ? result.plan.strategy : JSON.stringify(result.plan.strategy, null, 2)}
-                </div>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7 }}>{result.campaign.strategy}</div>
               </div>
             )}
 
-            {/* Segments from Strategy */}
-            {result?.plan?.strategy?.segments?.length > 0 && (
+            {/* Cohort Analysis */}
+            {result?.campaign?.cohortAnalysis && (
               <div className="glass" style={{ padding: 24 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
                   <span className="material-symbols-outlined" style={{ color: 'var(--accent-primary)', fontSize: 20 }}>group</span>
-                  <h4 style={{ fontWeight: 700 }}>Segments</h4>
+                  <h4 style={{ fontWeight: 700 }}>Cohort Analysis</h4>
                 </div>
                 <div className="g3">
-                  {result.plan.strategy.segments.map((seg, i) => (
+                  {result.campaign.cohortAnalysis.segments?.map((seg, i) => (
                     <div key={i} className="seg-card">
                       <div className="seg-head">
                         <span className="seg-name">{seg.name}</span>
-                        <span className="seg-count">{seg.count?.toLocaleString()} customers</span>
+                        <span className="seg-count">{seg.count?.toLocaleString()}</span>
                       </div>
                       {seg.description && <p className="seg-desc">{seg.description}</p>}
-                      <div className="seg-meta">
-                        {seg.recommendedTone && <span>🎯 {seg.recommendedTone}</span>}
-                        {seg.recommendedSendTime && <span>🕐 {seg.recommendedSendTime}</span>}
-                        {seg.priority && <span>⚡ {seg.priority}</span>}
-                      </div>
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
-
-            {/* Workflow Plan */}
-            {result?.plan?.workflowPlan && (
-              <div className="glass" style={{ padding: 24 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                  <span className="material-symbols-outlined" style={{ color: 'var(--accent-primary)', fontSize: 20 }}>account_tree</span>
-                  <h4 style={{ fontWeight: 700 }}>Workflow Plan</h4>
-                </div>
-                <pre style={{ fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
-                  {typeof result.plan.workflowPlan === 'string' ? result.plan.workflowPlan : JSON.stringify(result.plan.workflowPlan, null, 2)}
-                </pre>
               </div>
             )}
           </>

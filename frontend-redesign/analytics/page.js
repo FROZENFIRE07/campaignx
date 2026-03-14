@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import StatsCard from '../components/StatsCard';
 
 const HEATMAP_DATA = {
@@ -18,15 +18,15 @@ const HEATMAP_DATA = {
 
 const REGIONS = [
   { name: 'North America', pct: 42, color: 'var(--accent-primary)' },
-  { name: 'Europe', pct: 28, color: 'rgba(163,230,53,0.6)' },
-  { name: 'Asia Pacific', pct: 18, color: 'rgba(163,230,53,0.4)' },
-  { name: 'Latin America', pct: 8, color: 'rgba(163,230,53,0.25)' },
-  { name: 'Others', pct: 4, color: 'rgba(163,230,53,0.15)' },
+  { name: 'Europe', pct: 28, color: 'rgba(99,102,241,0.6)' },
+  { name: 'Asia Pacific', pct: 18, color: 'rgba(99,102,241,0.4)' },
+  { name: 'Latin America', pct: 8, color: 'rgba(99,102,241,0.25)' },
+  { name: 'Others', pct: 4, color: 'rgba(99,102,241,0.15)' },
 ];
 
 const INSIGHTS = [
   { icon: 'trending_up', title: 'Engagement spike detected on Tuesdays between 10-11 AM EST', bg: 'rgba(16,185,129,0.15)', color: 'var(--accent-green)' },
-  { icon: 'psychology', title: 'Subject lines with questions have 23% higher open rates', bg: 'rgba(163,230,53,0.15)', color: 'var(--accent-primary)' },
+  { icon: 'psychology', title: 'Subject lines with questions have 23% higher open rates', bg: 'rgba(99,102,241,0.15)', color: 'var(--accent-primary)' },
   { icon: 'warning', title: 'Click-through rate declining in "SMB" segment — consider A/B test', bg: 'rgba(245,158,11,0.15)', color: 'var(--accent-amber)' },
 ];
 
@@ -42,15 +42,7 @@ export default function Analytics() {
       .finally(() => setLoading(false));
   }, []);
 
-  const totalReach = campaigns.reduce(
-    (sum, campaign) =>
-      sum +
-      (campaign.contentVariants?.reduce(
-        (s, variant) => s + (variant.customerIds?.length || 0),
-        0
-      ) || 0),
-    0
-  );
+  const totalReach = campaigns.reduce((s, c) => s + (c.cohortAnalysis?.totalAudience || 0), 0) || 12400;
   const avgEngagement = campaigns.length > 0
     ? (campaigns.reduce((s, c) => s + (c.metrics?.openRate || 0), 0) / campaigns.length).toFixed(1)
     : '24.8';
@@ -105,10 +97,10 @@ export default function Analytics() {
 
       {/* Stat Cards */}
       <div className="stats-grid" style={{ marginBottom: 32 }}>
-        <StatsCard materialIcon="campaign" value={totalReach.toLocaleString()} label="Total Reach" trend="+12.5% vs last month" trendDir="up" bgColor="rgba(163,230,53,0.1)" />
-        <StatsCard materialIcon="touch_app" value={`${avgEngagement}%`} label="Engagement Rate" trend="+3.2% vs last month" trendDir="up" bgColor="rgba(163,230,53,0.1)" />
-        <StatsCard materialIcon="payments" value={totalConversions.toLocaleString()} label="Conversions" trend="+8.1% vs last month" trendDir="up" bgColor="rgba(163,230,53,0.1)" />
-        <StatsCard materialIcon="account_balance_wallet" value={totalSpend} label="Total Spend" trend="-5.2% efficiency gain" trendDir="down" bgColor="rgba(163,230,53,0.1)" />
+        <StatsCard materialIcon="campaign" value={totalReach.toLocaleString()} label="Total Reach" trend="+12.5% vs last month" trendDir="up" bgColor="rgba(99,102,241,0.1)" />
+        <StatsCard materialIcon="touch_app" value={`${avgEngagement}%`} label="Engagement Rate" trend="+3.2% vs last month" trendDir="up" bgColor="rgba(99,102,241,0.1)" />
+        <StatsCard materialIcon="payments" value={totalConversions.toLocaleString()} label="Conversions" trend="+8.1% vs last month" trendDir="up" bgColor="rgba(99,102,241,0.1)" />
+        <StatsCard materialIcon="account_balance_wallet" value={totalSpend} label="Total Spend" trend="-5.2% efficiency gain" trendDir="down" bgColor="rgba(99,102,241,0.1)" />
       </div>
 
       {/* Chart + Heatmap */}
@@ -118,7 +110,7 @@ export default function Analytics() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
             <h3 style={{ fontWeight: 700 }}>Engagement Over Time</h3>
             <div className="chart-legend">
-              <div className="chart-legend-item" style={{ background: 'rgba(163,230,53,0.1)', color: 'var(--accent-primary)' }}>
+              <div className="chart-legend-item" style={{ background: 'rgba(99,102,241,0.1)', color: 'var(--accent-primary)' }}>
                 <span className="chart-legend-dot" style={{ background: 'var(--accent-primary)' }} />
                 Open Rate
               </div>
@@ -132,8 +124,8 @@ export default function Analytics() {
             <svg viewBox={`0 0 ${chartWidth} ${chartHeight + 10}`} style={{ width: '100%', height: '100%' }} preserveAspectRatio="none">
               <defs>
                 <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="rgba(163,230,53,0.3)" />
-                  <stop offset="100%" stopColor="rgba(163,230,53,0)" />
+                  <stop offset="0%" stopColor="rgba(99,102,241,0.3)" />
+                  <stop offset="100%" stopColor="rgba(99,102,241,0)" />
                 </linearGradient>
               </defs>
               <path d={areaPath} fill="url(#chartGradient)" />
@@ -162,8 +154,8 @@ export default function Analytics() {
             {HEATMAP_DATA.days.map((d) => <div className="heatmap-label" key={d}>{d}</div>)}
             {/* Data rows */}
             {HEATMAP_DATA.hours.map((h, hi) => (
-              <React.Fragment key={`row-${h}`}>
-                <div className="heatmap-label">{h}</div>
+              <>
+                <div className="heatmap-label" key={`h-${h}`}>{h}</div>
                 {HEATMAP_DATA.days.map((d, di) => {
                   const val = HEATMAP_DATA.values[hi][di];
                   const alpha = Math.max(0.05, val);
@@ -171,12 +163,12 @@ export default function Analytics() {
                     <div
                       className="heatmap-cell"
                       key={`${h}-${d}`}
-                      style={{ background: `rgba(163, 230, 53, ${alpha})` }}
+                      style={{ background: `rgba(99, 102, 241, ${alpha})` }}
                       title={`${d} ${h}: ${Math.round(val * 100)}% engagement`}
                     />
                   );
                 })}
-              </React.Fragment>
+              </>
             ))}
           </div>
         </div>
@@ -190,7 +182,7 @@ export default function Analytics() {
           <div>
             {[
               { name: 'Email', pct: 45, color: 'var(--accent-primary)' },
-              { name: 'LinkedIn', pct: 25, color: 'rgba(163,230,53,0.6)' },
+              { name: 'LinkedIn', pct: 25, color: 'rgba(99,102,241,0.6)' },
               { name: 'WhatsApp', pct: 18, color: 'var(--accent-green)' },
               { name: 'SMS', pct: 12, color: 'var(--accent-amber)' },
             ].map((ch) => (

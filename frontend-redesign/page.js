@@ -53,7 +53,7 @@ export default function Dashboard() {
           label="Open Rate"
           trend={avgOpenRate !== '--' ? '+2.1% from last week' : null}
           trendDir="up"
-          bgColor="rgba(163, 230, 53, 0.1)"
+          bgColor="rgba(99, 102, 241, 0.1)"
         />
         <StatsCard
           materialIcon="ads_click"
@@ -61,7 +61,7 @@ export default function Dashboard() {
           label="CTR"
           trend={avgClickRate !== '--' ? 'vs last week' : null}
           trendDir={Number(avgClickRate) > 5 ? 'up' : 'down'}
-          bgColor="rgba(163, 230, 53, 0.1)"
+          bgColor="rgba(99, 102, 241, 0.1)"
         />
         <StatsCard
           materialIcon="smart_toy"
@@ -69,17 +69,15 @@ export default function Dashboard() {
           label="Active Agents"
           trend={`${campaigns.length} total campaigns`}
           trendDir="up"
-          bgColor="rgba(163, 230, 53, 0.1)"
+          bgColor="rgba(99, 102, 241, 0.1)"
         />
         <StatsCard
-          materialIcon="score"
-          value={campaigns.length > 0
-            ? (campaigns.reduce((s, c) => s + (c.metrics?.matrixScore || 0), 0) / campaigns.length).toFixed(1)
-            : '--'}
-          label="Matrix Score"
-          trend={campaigns.length > 0 ? 'avg across campaigns' : null}
+          materialIcon="payments"
+          value={analyzedCampaigns.length > 0 ? '4.8%' : '--'}
+          label="Conversion"
+          trend={analyzedCampaigns.length > 0 ? '+1.2% boost' : null}
           trendDir="up"
-          bgColor="rgba(163, 230, 53, 0.1)"
+          bgColor="rgba(99, 102, 241, 0.1)"
         />
       </div>
 
@@ -243,7 +241,7 @@ export default function Dashboard() {
                   <span>42%</span>
                 </div>
                 <div className="dist-track">
-                  <div className="dist-fill" style={{ width: '42%', background: 'rgba(163,230,53,0.6)' }} />
+                  <div className="dist-fill" style={{ width: '42%', background: 'rgba(99,102,241,0.6)' }} />
                 </div>
               </div>
               <div className="dist-item">

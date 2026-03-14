@@ -5,7 +5,7 @@ export default function StatsCard({ icon, materialIcon, value, label, trend, tre
     <div className="glass glass-hover stat-card-new">
       <div className="stat-card-new-top">
         <span className="stat-card-new-label">{label}</span>
-        <div className="stat-card-new-icon" style={{ background: bgColor || 'rgba(163, 230, 53, 0.1)' }}>
+        <div className="stat-card-new-icon" style={{ background: bgColor || 'rgba(99, 102, 241, 0.1)' }}>
           {materialIcon ? (
             <span className="material-symbols-outlined">{materialIcon}</span>
           ) : (

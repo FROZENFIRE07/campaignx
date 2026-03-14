@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>CampaignX Analytics - Sleek Data Interface</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              colors: {
+                "primary": "#6366F1",
+                "background-light": "#f6f6f8",
+                "background-dark": "#0F172A",
+              },
+              fontFamily: {
+                "display": ["Inter", "sans-serif"]
+              },
+              borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+            },
+          },
+        }
+    </script>
+<style>
+        .glass-card {
+            background: rgba(30, 41, 59, 0.5);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .heatmap-cell {
+            aspect-ratio: 1/1;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 antialiased">
+<div class="relative flex h-auto min-h-screen w-full flex-col overflow-x-hidden">
+<!-- Navigation Bar -->
+<header class="sticky top-0 z-50 flex items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md px-6 py-3 lg:px-12">
+<div class="flex items-center gap-8">
+<div class="flex items-center gap-3">
+<div class="size-8 rounded-lg bg-primary flex items-center justify-center text-white">
+<span class="material-symbols-outlined text-xl">analytics</span>
+</div>
+<h2 class="text-slate-900 dark:text-white text-lg font-bold leading-tight tracking-tight">CampaignX</h2>
+</div>
+<nav class="hidden md:flex items-center gap-6">
+<a class="text-slate-600 dark:text-slate-400 hover:text-primary dark:hover:text-primary text-sm font-medium transition-colors" href="#">Dashboard</a>
+<a class="text-primary text-sm font-medium" href="#">Campaigns</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-primary dark:hover:text-primary text-sm font-medium transition-colors" href="#">Audience</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-primary dark:hover:text-primary text-sm font-medium transition-colors" href="#">Insights</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="hidden sm:flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg px-3 py-1.5 border border-slate-200 dark:border-slate-700">
+<span class="material-symbols-outlined text-slate-400 text-sm">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-sm placeholder:text-slate-500 w-40 lg:w-64" placeholder="Search analytics..." type="text"/>
+<span class="text-[10px] font-bold text-slate-500 border border-slate-500 rounded px-1.5 py-0.5 ml-2">⌘K</span>
+</div>
+<button class="p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<div class="size-8 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden ring-2 ring-primary/20">
+<img alt="User" data-alt="User profile avatar portrait" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDzVsPXFoXbv9ER5bJexPMrAlZfIEYD5zkypZOVtNCyv0btJZhJ_DAie1JQoU5pII6Dp8_XFLzYym2PMAwH1qyljfOWwHmKRf1_65y13_85HKJT7fEtZZxEtn8gVuX_dqNS4eF4o9jcXetumwWifp2LNyQu2SRP10cE9Yd1M8M2DtV2d-Rn-oaYcq3Ilef2xLciFvVkm5INX7oOQEkq6i0l0DR7wO138I4xSC8guTPKE60wdAyR-iV6hp6CSFJ5Y2kDKu6xECvW3Hc"/>
+</div>
+</div>
+</header>
+<main class="flex-1 px-6 py-8 lg:px-12 max-w-7xl mx-auto w-full">
+<!-- Header Section -->
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10">
+<div>
+<div class="flex items-center gap-2 mb-1">
+<span class="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-wider rounded">Live Analytics</span>
+</div>
+<h1 class="text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">Performance Overview</h1>
+<p class="text-slate-500 dark:text-slate-400 mt-2">Real-time data for "Summer Launch 2024" campaign.</p>
+</div>
+<div class="flex items-center gap-3">
+<button class="flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-all border border-slate-200 dark:border-slate-700">
+<span class="material-symbols-outlined text-lg">calendar_today</span>
+                    Last 30 Days
+                </button>
+<button class="flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-primary text-white rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
+<span class="material-symbols-outlined text-lg">ios_share</span>
+                    Export Report
+                </button>
+</div>
+</div>
+<!-- Metric Cards -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+<div class="glass-card p-6 rounded-xl relative overflow-hidden group">
+<div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+<span class="material-symbols-outlined text-4xl">group</span>
+</div>
+<p class="text-slate-400 text-sm font-medium">Total Reach</p>
+<h3 class="text-2xl font-bold mt-1">1,284,592</h3>
+<div class="flex items-center gap-1.5 mt-2">
+<span class="material-symbols-outlined text-emerald-500 text-sm font-bold">trending_up</span>
+<span class="text-emerald-500 text-sm font-bold">+12.4%</span>
+<span class="text-slate-500 text-xs">vs last month</span>
+</div>
+</div>
+<div class="glass-card p-6 rounded-xl relative overflow-hidden group">
+<div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+<span class="material-symbols-outlined text-4xl">ads_click</span>
+</div>
+<p class="text-slate-400 text-sm font-medium">Engagement Rate</p>
+<h3 class="text-2xl font-bold mt-1">8.42%</h3>
+<div class="flex items-center gap-1.5 mt-2">
+<span class="material-symbols-outlined text-emerald-500 text-sm font-bold">trending_up</span>
+<span class="text-emerald-500 text-sm font-bold">+2.1%</span>
+<span class="text-slate-500 text-xs">vs last month</span>
+</div>
+</div>
+<div class="glass-card p-6 rounded-xl relative overflow-hidden group">
+<div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+<span class="material-symbols-outlined text-4xl">shopping_cart</span>
+</div>
+<p class="text-slate-400 text-sm font-medium">Conversions</p>
+<h3 class="text-2xl font-bold mt-1">42,903</h3>
+<div class="flex items-center gap-1.5 mt-2">
+<span class="material-symbols-outlined text-rose-500 text-sm font-bold">trending_down</span>
+<span class="text-rose-500 text-sm font-bold">-0.8%</span>
+<span class="text-slate-500 text-xs">vs last month</span>
+</div>
+</div>
+<div class="glass-card p-6 rounded-xl relative overflow-hidden group">
+<div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+<span class="material-symbols-outlined text-4xl">payments</span>
+</div>
+<p class="text-slate-400 text-sm font-medium">Total Spend</p>
+<h3 class="text-2xl font-bold mt-1">$12,402.00</h3>
+<div class="flex items-center gap-1.5 mt-2">
+<span class="material-symbols-outlined text-emerald-500 text-sm font-bold">trending_up</span>
+<span class="text-emerald-500 text-sm font-bold">+5.3%</span>
+<span class="text-slate-500 text-xs">vs last month</span>
+</div>
+</div>
+</div>
+<!-- Main Charts Section -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+<!-- Line Chart: Performance Over Time -->
+<div class="glass-card p-6 rounded-xl lg:col-span-2">
+<div class="flex items-center justify-between mb-8">
+<div>
+<h3 class="text-lg font-bold">Performance Over Time</h3>
+<p class="text-slate-400 text-xs mt-1">Daily engagement and conversion tracking</p>
+</div>
+<div class="flex gap-2">
+<div class="flex items-center gap-2 px-3 py-1 bg-primary/20 rounded-full border border-primary/30">
+<div class="size-2 rounded-full bg-primary"></div>
+<span class="text-[10px] font-bold uppercase tracking-tight text-primary">Engagement</span>
+</div>
+<div class="flex items-center gap-2 px-3 py-1 bg-slate-700/50 rounded-full border border-slate-600/30">
+<div class="size-2 rounded-full bg-slate-400"></div>
+<span class="text-[10px] font-bold uppercase tracking-tight text-slate-400">Conversions</span>
+</div>
+</div>
+</div>
+<div class="relative h-[300px] w-full mt-4 flex items-end justify-between gap-1 overflow-hidden">
+<!-- Simplified Visual representation of a line chart with Tailwind gradients -->
+<div class="absolute inset-0 flex items-end">
+<svg class="w-full h-full" fill="none" preserveaspectratio="none" viewbox="0 0 1000 300" xmlns="http://www.w3.org/2000/svg">
+<path d="M0 250C100 240 150 120 250 140C350 160 400 280 500 260C600 240 650 40 750 60C850 80 900 200 1000 180V300H0V250Z" fill="url(#paint0_linear)" fill-opacity="0.3"></path>
+<path d="M0 250C100 240 150 120 250 140C350 160 400 280 500 260C600 240 650 40 750 60C850 80 900 200 1000 180" stroke="#6366F1" stroke-linecap="round" stroke-width="3"></path>
+<defs>
+<lineargradient gradientunits="userSpaceOnUse" id="paint0_linear" x1="500" x2="500" y1="40" y2="300">
+<stop stop-color="#6366F1"></stop>
+<stop offset="1" stop-color="#6366F1" stop-opacity="0"></stop>
+</lineargradient>
+</defs>
+</svg>
+</div>
+<!-- Chart Tooltip Placeholder -->
+<div class="absolute left-1/2 top-1/4 -translate-x-1/2 -translate-y-1/2 glass-card p-3 rounded-lg border-primary/50 shadow-2xl z-10 pointer-events-none">
+<p class="text-xs text-slate-400 font-medium">May 14, 2024</p>
+<p class="text-sm font-bold text-white">8,402 Engagements</p>
+</div>
+<!-- Axis Labels -->
+<div class="absolute bottom-0 w-full flex justify-between text-[10px] text-slate-500 font-bold px-2 mb-[-20px]">
+<span>May 01</span>
+<span>May 08</span>
+<span>May 15</span>
+<span>May 22</span>
+<span>May 29</span>
+</div>
+</div>
+</div>
+<!-- Best Send Times Heat-map -->
+<div class="glass-card p-6 rounded-xl flex flex-col">
+<div class="flex items-center justify-between mb-4">
+<h3 class="text-lg font-bold">Best Send Times</h3>
+<button class="text-primary hover:underline text-xs font-semibold">Details</button>
+</div>
+<p class="text-slate-400 text-xs mb-6">Optimized schedule based on AI audience analysis.</p>
+<div class="grid grid-cols-8 gap-1.5 flex-1">
+<div class="text-[9px] font-bold text-slate-500 uppercase flex items-center"></div>
+<div class="text-[9px] font-bold text-slate-500 uppercase flex items-center justify-center">Mon</div>
+<div class="text-[9px] font-bold text-slate-500 uppercase flex items-center justify-center">Tue</div>
+<div class="text-[9px] font-bold text-slate-500 uppercase flex items-center justify-center">Wed</div>
+<div class="text-[9px] font-bold text-slate-500 uppercase flex items-center justify-center">Thu</div>
+<div class="text-[9px] font-bold text-slate-500 uppercase flex items-center justify-center">Fri</div>
+<div class="text-[9px] font-bold text-slate-500 uppercase flex items-center justify-center">Sat</div>
+<div class="text-[9px] font-bold text-slate-500 uppercase flex items-center justify-center">Sun</div>
+<!-- Time slots rows -->
+<div class="text-[9px] font-bold text-slate-500 flex items-center pr-2">08:00</div>
+<div class="heatmap-cell rounded-sm bg-primary/20 hover:bg-primary/40 transition-colors"></div>
+<div class="heatmap-cell rounded-sm bg-primary/40 hover:bg-primary/60 transition-colors"></div>
+<div class="heatmap-cell rounded-sm bg-primary/10 hover:bg-primary/30 transition-colors"></div>
+<div class="heatmap-cell rounded-sm bg-primary/30 hover:bg-primary/50 transition-colors"></div>
+<div class="heatmap-cell rounded-sm bg-primary/5 hover:bg-primary/20 transition-colors"></div>
+<div class="heatmap-cell rounded-sm bg-primary/5 hover:bg-primary/20 transition-colors"></div>
+<div class="heatmap-cell rounded-sm bg-primary/10 hover:bg-primary/30 transition-colors"></div>
+<div class="text-[9px] font-bold text-slate-500 flex items-center pr-2">12:00</div>
+<div class="heatmap-cell rounded-sm bg-primary/60 hover:bg-primary/80 transition-colors"></div>
+<div class="heatmap-cell rounded-sm bg-primary/90 hover:bg-primary/100 transition-colors ring-2 ring-primary"></div>
+<div class="heatmap-cell rounded-sm bg-primary/70 hover:bg-primary/90 transition-colors"></div>
+<div class="heatmap-cell rounded-sm bg-primary/50 hover:bg-primary/70 transition-colors"></div>
+<div class="heatmap-cell rounded-sm bg-primary/40 hover:bg-primary/60 transition-colors"></div>
+<div class="heatmap-cell rounded-sm bg-primary/20 hover:bg-primary/40 transition-colors"></div>
+<div class="heatmap-cell rounded-sm bg-primary/10 hover:bg-primary/30 transition-colors"></div>
+<div class="text-[9px] font-bold text-slate-500 flex items-center pr-2">16:00</div>
+<div class="heatmap-cell rounded-sm bg-primary/30 hover:bg-primary/50 transition-colors"></div>
+<div class="heatmap-cell rounded-sm bg-primary/40 hover:bg-primary/60 transition-colors"></div>
+<div class="heatmap-cell rounded-sm bg-primary/60 hover:bg-primary/80 transition-colors"></div>
+<div class="heatmap-cell rounded-sm bg-primary/80 hover:bg-primary/100 transition-colors"></div>
+<div class="heatmap-cell rounded-sm bg-primary/60 hover:bg-primary/80 transition-colors"></div>
+<div class="heatmap-cell rounded-sm bg-primary/10 hover:bg-primary/30 transition-colors"></div>
+<div class="heatmap-cell rounded-sm bg-primary/5 hover:bg-primary/20 transition-colors"></div>
+<div class="text-[9px] font-bold text-slate-500 flex items-center pr-2">20:00</div>
+<div class="heatmap-cell rounded-sm bg-primary/10 hover:bg-primary/30 transition-colors"></div>
+<div class="heatmap-cell rounded-sm bg-primary/10 hover:bg-primary/30 transition-colors"></div>
+<div class="heatmap-cell rounded-sm bg-primary/20 hover:bg-primary/40 transition-colors"></div>
+<div class="heatmap-cell rounded-sm bg-primary/20 hover:bg-primary/40 transition-colors"></div>
+<div class="heatmap-cell rounded-sm bg-primary/30 hover:bg-primary/50 transition-colors"></div>
+<div class="heatmap-cell rounded-sm bg-primary/5 hover:bg-primary/20 transition-colors"></div>
+<div class="heatmap-cell rounded-sm bg-primary/5 hover:bg-primary/20 transition-colors"></div>
+</div>
+<div class="mt-6 flex items-center justify-between text-[10px] text-slate-500 font-bold px-1">
+<span>LOW ACTIVITY</span>
+<div class="flex-1 h-1 mx-2 bg-gradient-to-r from-primary/10 via-primary/50 to-primary rounded-full"></div>
+<span>HIGH ACTIVITY</span>
+</div>
+</div>
+</div>
+<!-- Secondary Insights -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+<!-- Channel Distribution -->
+<div class="glass-card p-6 rounded-xl">
+<h3 class="text-sm font-bold mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-lg">pie_chart</span>
+                    Channel Distribution
+                </h3>
+<div class="space-y-4">
+<div class="space-y-1.5">
+<div class="flex justify-between text-xs font-semibold">
+<span>Social Media</span>
+<span class="text-slate-400">45%</span>
+</div>
+<div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+<div class="bg-primary h-full rounded-full" style="width: 45%"></div>
+</div>
+</div>
+<div class="space-y-1.5">
+<div class="flex justify-between text-xs font-semibold">
+<span>Email Marketing</span>
+<span class="text-slate-400">32%</span>
+</div>
+<div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+<div class="bg-indigo-400 h-full rounded-full" style="width: 32%"></div>
+</div>
+</div>
+<div class="space-y-1.5">
+<div class="flex justify-between text-xs font-semibold">
+<span>Direct Search</span>
+<span class="text-slate-400">18%</span>
+</div>
+<div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+<div class="bg-slate-400 h-full rounded-full" style="width: 18%"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Audience Regions -->
+<div class="glass-card p-6 rounded-xl relative overflow-hidden">
+<h3 class="text-sm font-bold mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-lg">public</span>
+                    Top Audience Regions
+                </h3>
+<div class="space-y-4">
+<div class="flex items-center gap-3">
+<div class="size-2 rounded-full bg-emerald-500"></div>
+<span class="text-xs font-semibold flex-1">North America</span>
+<span class="text-xs text-slate-400 font-bold">540k reach</span>
+</div>
+<div class="flex items-center gap-3">
+<div class="size-2 rounded-full bg-primary"></div>
+<span class="text-xs font-semibold flex-1">Europe</span>
+<span class="text-xs text-slate-400 font-bold">290k reach</span>
+</div>
+<div class="flex items-center gap-3">
+<div class="size-2 rounded-full bg-indigo-400"></div>
+<span class="text-xs font-semibold flex-1">Asia Pacific</span>
+<span class="text-xs text-slate-400 font-bold">120k reach</span>
+</div>
+</div>
+<!-- Abstract Map Pattern Background -->
+<div class="absolute bottom-[-20%] right-[-10%] opacity-10 pointer-events-none scale-150">
+<span class="material-symbols-outlined text-[200px]">language</span>
+</div>
+</div>
+<!-- Recent Alerts/Log -->
+<div class="glass-card p-6 rounded-xl">
+<h3 class="text-sm font-bold mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-lg">auto_awesome</span>
+                    AI Insights
+                </h3>
+<div class="space-y-3">
+<div class="flex items-start gap-3 p-3 bg-white/5 rounded-lg border border-white/5 hover:border-primary/30 transition-colors cursor-pointer group">
+<div class="p-1.5 rounded bg-emerald-500/10 text-emerald-500">
+<span class="material-symbols-outlined text-sm">rocket_launch</span>
+</div>
+<div>
+<p class="text-[11px] leading-tight font-bold text-slate-200">High performing segment found</p>
+<p class="text-[10px] text-slate-500 mt-1">Founders in SF show 3x more engagement after 9 PM.</p>
+</div>
+<span class="material-symbols-outlined text-slate-600 text-sm ml-auto opacity-0 group-hover:opacity-100 transition-opacity">chevron_right</span>
+</div>
+<div class="flex items-start gap-3 p-3 bg-white/5 rounded-lg border border-white/5 hover:border-primary/30 transition-colors cursor-pointer group">
+<div class="p-1.5 rounded bg-amber-500/10 text-amber-500">
+<span class="material-symbols-outlined text-sm">warning</span>
+</div>
+<div>
+<p class="text-[11px] leading-tight font-bold text-slate-200">Ad fatigue detected</p>
+<p class="text-[10px] text-slate-500 mt-1">Creatives for "Brand Story" campaign decreasing CTR.</p>
+</div>
+<span class="material-symbols-outlined text-slate-600 text-sm ml-auto opacity-0 group-hover:opacity-100 transition-opacity">chevron_right</span>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer -->
+<footer class="mt-12 px-6 lg:px-12 py-8 border-t border-slate-200 dark:border-slate-800 text-center">
+<p class="text-xs text-slate-500 font-medium">© 2024 CampaignX Analytics. Powered by AI Insights.</p>
+</footer>
+</div>
+</body></html>

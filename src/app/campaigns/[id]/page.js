@@ -15,6 +15,8 @@ export default function CampaignDetail() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
+  const [analysis, setAnalysis] = useState(null);
+  const [optimizing, setOptimizing] = useState(false);
 
   useEffect(() => {
     fetch(`/api/campaigns/${id}`)
@@ -28,21 +30,51 @@ export default function CampaignDetail() {
   }, [id]);
 
   const handleAnalyze = async () => {
-    if (!campaign?.campaignId) return;
     setAnalyzing(true);
     try {
       const res = await fetch('/api/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'analyze', campaignId: campaign.campaignId, dbCampaignId: id }),
+        body: JSON.stringify({ action: 'analyze', dbCampaignId: campaign._id }),
       });
       const data = await res.json();
       if (data.success) {
-        setCampaign((prev) => ({ ...prev, metrics: data.analysis?.overallPerformance, reportData: data.report?.data, status: 'analyzed' }));
+        setAnalysis(data.analysis);
+        setCampaign((prev) => ({
+          ...prev,
+          metrics: data.analysis?.overallPerformance,
+          status: 'analyzed',
+        }));
         if (data.logs) setLogs((prev) => [...prev, ...data.logs]);
       }
     } catch { /* ignore */ }
     setAnalyzing(false);
+  };
+
+  const handleOptimize = async () => {
+    setOptimizing(true);
+    try {
+      const res = await fetch('/api/agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'optimize',
+          dbCampaignId: campaign._id,
+          optimizedVariants: campaign.contentVariants || [],
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCampaign((prev) => ({
+          ...prev,
+          contentVariants: data.optimizedVariants || prev.contentVariants,
+          status: 'optimizing',
+          iteration: (prev.iteration || 0) + 1,
+        }));
+        if (data.logs) setLogs((prev) => [...prev, ...data.logs]);
+      }
+    } catch { /* ignore */ }
+    setOptimizing(false);
   };
 
   if (loading) {
@@ -97,6 +129,11 @@ export default function CampaignDetail() {
             {['sent', 'completed'].includes(campaign.status) && (
               <button className="btn btn-primary" onClick={handleAnalyze} disabled={analyzing}>
                 {analyzing ? '⏳ Analyzing...' : '📊 Analyze Performance'}
+              </button>
+            )}
+            {campaign.status === 'analyzed' && (
+              <button className="btn btn-outline" onClick={handleOptimize} disabled={optimizing}>
+                {optimizing ? '⏳ Optimizing...' : '🔄 Optimize'}
               </button>
             )}
             <Link href="/campaigns/new" className="btn btn-outline">Duplicate</Link>
@@ -160,6 +197,7 @@ export default function CampaignDetail() {
                   <div className="seg-meta">
                     <span>🎯 {seg.recommendedTone}</span>
                     <span>🕐 {seg.recommendedSendTime}</span>
+                    {seg.priority && <span>⚡ {seg.priority}</span>}
                   </div>
                 </div>
               ))}
@@ -221,10 +259,37 @@ export default function CampaignDetail() {
                 </div>
               )}
 
-              {/* AI Insights */}
+              {/* Analysis Results */}
+              {analysis && (
+                <>
+                  {analysis.abTestWinner && (
+                    <div className="card" style={{ marginBottom: 20 }}>
+                      <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>🏆 A/B Test Winner</h3>
+                      <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                        {typeof analysis.abTestWinner === 'string' ? analysis.abTestWinner : JSON.stringify(analysis.abTestWinner, null, 2)}
+                      </div>
+                    </div>
+                  )}
+
+                  {analysis.insights?.length > 0 && (
+                    <div className="card" style={{ marginBottom: 20 }}>
+                      <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>💡 AI Insights</h3>
+                      {analysis.insights.map((insight, i) => (
+                        <div key={i} style={{ padding: '12px 0', borderBottom: i < analysis.insights.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
+                          <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                            {typeof insight === 'string' ? insight : insight.text || JSON.stringify(insight)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Optimization History */}
               {campaign.optimizationHistory?.length > 0 && (
                 <div className="card">
-                  <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>💡 AI Insights</h3>
+                  <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>🔄 Optimization History</h3>
                   {campaign.optimizationHistory.map((opt, i) => (
                     <div key={i} style={{ padding: '12px 0', borderBottom: i < campaign.optimizationHistory.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
                       <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)', marginBottom: 6 }}>

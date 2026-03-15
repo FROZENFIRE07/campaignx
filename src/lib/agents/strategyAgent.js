@@ -140,10 +140,9 @@ INDIAN BFSI CONTEXT (SuperBFSI XDeposit term deposit campaign):
 SEGMENTATION MANDATE — YOU MUST CREATE EXACTLY 6 TO 8 MICRO-SEGMENTS:
 1. Use EVERY available segmentable field from the discovery below
 2. Behavioral fields (Y/N flags) DOUBLE the segment priority — combine with demographics
-3. Do NOT create catch-all or generic segments — every segment must have at least 2 specific rules (but no more than 3 rules to keep segments broad enough)
-4. Segments SHOULD overlap — a customer may appear in multiple segments (deduplication happens at send time). Aim for 85-90%+ cohort coverage across all segments combined BEFORE any catch-all
+3. Do NOT create catch-all or generic segments — every segment must have at least 2 specific rules
+4. Segments must be mutually exclusive with minimal overlap (cover entire cohort)
 5. Order by EXPECTED ENGAGEMENT: highest first
-6. Each segment MUST target at least 5% of the cohort. Segments narrower than 5% will be automatically merged — avoid hyper-narrow combinations that match <3% of cohort. Prefer 2-rule segments over 4+ rule segments
 
 MANDATORY PER-SEGMENT SEND TIMES (IST) — use these exactly:
 - Age 60+ (seniors): 10:00
@@ -170,9 +169,8 @@ Rules within a segment use AND logic. Respond in valid JSON only.`;
 DISCOVERED SEGMENTATION ATTRIBUTES (${discovery.totalRecords} total customers):
 ${discoveryText}
 
-YOU MUST CREATE EXACTLY 6 TO 8 MICRO-SEGMENTS. Fewer than 6 is a FAILURE.
-Each segment must cover at least 5% of the cohort. Overlaps are OK — they will be deduplicated at send time. Aim for 85-90%+ total coverage.
-Prefer segments with 2-3 broad rules over segments with 4+ narrow rules.
+YOU MUST CREATE EXACTLY 6 TO 8 MICRO-SEGMENTS. Broad segments or fewer than 6 is a FAILURE.
+Use ONLY field names and values from the discovery above. Put highest-engagement segment FIRST.
 
 {
   "segments": [

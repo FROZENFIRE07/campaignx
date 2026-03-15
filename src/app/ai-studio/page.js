@@ -211,7 +211,7 @@ function defaultLogs() {
     { timestamp: '14:32:15', agent: 'Strategy', step: 'segment', reasoning: 'Market analysis complete. Identified 3 key segments: Enterprise SaaS, Mid-Market, SMB.', createdAt: new Date().toISOString(), type: 'info' },
     { timestamp: '14:32:20', agent: 'Tool_Call', step: 'discover', reasoning: 'POST /api/discover → 200 OK (discovered 12 API tools)', createdAt: new Date().toISOString(), type: 'info' },
     { timestamp: '14:32:25', agent: 'Content', step: 'generate', reasoning: 'Generating email variants for segment "Enterprise SaaS"...', createdAt: new Date().toISOString(), type: 'info' },
-    { timestamp: '14:32:30', agent: 'Content', step: 'complete', reasoning: 'Generated 2 email variants (A/B). Subject lines optimized for open rate.', createdAt: new Date().toISOString(), type: 'info' },
+    { timestamp: '14:32:30', agent: 'Content', step: 'complete', reasoning: 'Generated 3 email variants. Subject lines optimized for open rate.', createdAt: new Date().toISOString(), type: 'info' },
     { timestamp: '14:32:35', agent: 'Tool_Call', step: 'fetch', reasoning: 'GET /api/agent → 200 OK (fetched 8 active campaigns)', createdAt: new Date().toISOString(), type: 'info' },
     { timestamp: '14:32:40', agent: 'Strategy', step: 'schedule', reasoning: 'Recommending send window: Tuesday 10:00 AM EST based on historical data.', createdAt: new Date().toISOString(), type: 'info' },
     { timestamp: '14:32:45', agent: 'System', step: 'done', reasoning: 'Campaign orchestration complete. Awaiting human approval.', createdAt: new Date().toISOString(), type: 'highlight' },

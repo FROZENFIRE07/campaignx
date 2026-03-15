@@ -261,9 +261,8 @@ Plan the steps needed to execute this campaign. What APIs do we need to call and
     const uncoveredIds = allCohortIds.filter(id => !allCoveredIds.has(id));
 
     if (uncoveredIds.length > 0) {
-        const coveragePercent = Math.round((allCoveredIds.size / allCohortIds.length) * 100);
         log('orchestrator', 'coverage_fix', {
-            reasoning: `[COVERAGE] Segment coverage: ${coveragePercent}% (${allCoveredIds.size}/${allCohortIds.length}). ${uncoveredIds.length} customers uncovered — adding catch-all for scoring completeness.`
+            reasoning: `[COVERAGE] ${uncoveredIds.length} customers were not in any segment. Adding them to ensure full cohort coverage for scoring.`
         });
 
         // Add uncovered customers to the last variant (or create a catch-all)

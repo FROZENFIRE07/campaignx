@@ -10,97 +10,84 @@ import { callLLM } from './llmService';
 /**
  * @param {string} brief - Campaign brief
  * @param {Object} strategy - Strategy with segments (from strategyAgent)
- * @param {Object} [cohortSummary] - Lightweight summary info (e.g., topCities, avgs, personalization support)
+ * @param {Object[]} [segmentProfiles] - Demographic profiles per segment (from ruleEngine.buildSegmentProfile)
  */
-export async function contentAgent(brief, strategy, cohortSummary = null) {
+export async function contentAgent(brief, strategy, segmentProfiles = []) {
     const segments = strategy.segments || [];
     const variants = [];
 
+    // Build a lookup of segment profiles by name
+    const profileMap = {};
+    if (Array.isArray(segmentProfiles)) {
+        segmentProfiles.forEach((p, i) => {
+            const segName = segments[i]?.name;
+            if (segName) profileMap[segName] = p;
+        });
+    }
+
     for (const segment of segments) {
+        const profile = profileMap[segment.name] || null;
+        const profileText = profile
+            ? `\nSegment Demographics:\n${JSON.stringify(profile.demographics, null, 2)}`
+            : '';
 
-        const localCity = cohortSummary?.topCities?.[0] || 'Maharashtra';
-        const supportsPersonalization = cohortSummary?.supportsPersonalization ?? false;
-        const nameHint = supportsPersonalization
-            ? `- PERSONALIZATION: The cohort has a Full_name field. Start every subject with the first name token {{First_Name}} (our system replaces it at send time). Example: "{{First_Name}}, Earn 1.25% More Returns 💰". This alone adds 8-12% open lift.`
-            : `- No name field detected — do NOT add name placeholders.`;
+        const systemPrompt = `You are an expert email marketing copywriter for SuperBFSI, an Indian BFSI service provider. You create high-converting email campaigns.
 
-        const systemPrompt = `You are an expert Indian BFSI email copywriter for SuperBFSI's XDeposit term deposit product. Your ONLY goal is to maximize open rate (target: 35%+) and click rate (target: 12%+).
+RULES:
+- Email body can contain: text in English, emojis, and the URL https://superbfsi.com/xdeposit/explore/
+- Email subject can contain: text in English only
+- Subject max 200 chars, body max 5000 chars
+- You decide: font formatting (bold/italic/underline using **bold**, *italic*, __underline__), emoji placement, URL placement
+- Match the tone to the target segment
+- Always include a clear call to action
 
-HARD RULES — violating any rule is a FAILURE:
-1. SUBJECT LINE: 35-55 characters ONLY. Must contain "1.25%". Max 1 emoji (end of subject only). NO spam trigger words.
-${nameHint}
-2. BODY: Maximum 200 words. Mobile-first. Must bold **1.25% higher returns**. Must include: "👉 Explore XDeposit: https://superbfsi.com/xdeposit/explore/". Must end with: "Reply for personalized advice — our team responds within 2 hours."
-3. EXACTLY 3 VARIANTS (A, B, C):
-   - Variant A: Direct benefit + 1.25% + credibility (use name if available)
-   - Variant B: Urgency + local city angle ("${localCity}") + limited time feel
-   - Variant C: Question format + emoji in subject + emotional hook in body
-4. TONE matching: warm/secure for seniors (60+), professional/ROI for high-income, aspirational for young (18-35)
-5. Every variant MUST feel written specifically for THIS segment
-
-Output only valid JSON.`;
+Respond in valid JSON format.`;
 
         const userPrompt = `Campaign Brief: "${brief}"
 
-Target Segment: "${segment.name}" — ${segment.description}
+Target Segment: "${segment.name}" - ${segment.description}
 Recommended Tone: ${segment.recommendedTone || 'professional'}
-Segment Size: ${segment.count || segment.customerIds?.length || 0} customers
-Top City for Local Angle: ${localCity}
-Name Personalization Available: ${supportsPersonalization}
+Segment Size: ${segment.count || segment.customerIds?.length || 0} customers${profileText}
 
-Cohort Summary:
-${JSON.stringify(cohortSummary, null, 2)}
-
-Create EXACTLY 3 variants (A, B, C). Subject: 35-55 chars with 1.25%${supportsPersonalization ? ' + {{First_Name}} prefix' : ''}. Body: <200 words.
-
+Create 2 email variants for A/B testing:
 {
   "variants": [
     {
       "variantName": "A",
-      "subject": "${supportsPersonalization ? '{{First_Name}}, ' : ''}subject with 1.25% benefit (35-55 chars total)",
-      "body": "benefit-led body <200 words, bold 1.25%, CTA, Reply sign-off",
+      "subject": "email subject line",
+      "body": "full email body with formatting, emojis where appropriate, and CTA URL",
       "tone": "described tone",
-      "reasoning": "why Variant A works"
+      "reasoning": "why this variant works for this segment"
     },
     {
       "variantName": "B",
-      "subject": "urgency + ${localCity} angle subject (35-55 chars)",
-      "body": "urgency + ${localCity} local body <200 words",
-      "tone": "urgent",
-      "reasoning": "why Variant B works"
-    },
-    {
-      "variantName": "C",
-      "subject": "question format subject with emoji (35-55 chars)",
-      "body": "question hook body <200 words with emotional angle",
-      "tone": "conversational",
-      "reasoning": "why Variant C works"
+      "subject": "different subject line",
+      "body": "different body with different approach",
+      "tone": "described tone",
+      "reasoning": "why this variant is different and what it tests"
     }
   ]
 }`;
 
         try {
-            const result = await callLLM(systemPrompt, userPrompt, { jsonMode: true, temperature: 0.7 });
+            const result = await callLLM(systemPrompt, userPrompt, { jsonMode: true, temperature: 0.8 });
             const emailVariants = result.variants || [result];
-            const numVariants = Math.max(1, emailVariants.length);
-            const ids = segment.customerIds || [];
-            const chunkSize = Math.ceil(ids.length / numVariants);
 
-            for (let i = 0; i < numVariants; i++) {
-                const v = emailVariants[i];
-                if (!v) continue;
-                // Trim subject to 55 chars if over limit
-                let subject = (v.subject || 'SuperBFSI XDeposit — Earn 1.25% More 💰').substring(0, 55);
-                const chunkIds = ids.slice(i * chunkSize, (i + 1) * chunkSize);
+            for (const v of emailVariants) {
+                // Split customer IDs for A/B test
+                const ids = segment.customerIds || [];
+                const midpoint = Math.ceil(ids.length / 2);
+                const isA = v.variantName === 'A';
 
                 variants.push({
-                    subject,
+                    subject: v.subject || 'SuperBFSI - Exclusive Offer',
                     body: v.body || '',
                     targetSegment: segment.name,
                     segmentDescription: segment.description,
                     tone: v.tone || segment.recommendedTone,
-                    sendTime: segment.recommendedSendTime || '11:00',
-                    customerIds: chunkIds,
-                    variantName: v.variantName || `Variant-${String.fromCharCode(65 + i)}`,
+                    sendTime: segment.recommendedSendTime || '10:00',
+                    customerIds: isA ? ids.slice(0, midpoint) : ids.slice(midpoint),
+                    variantName: v.variantName || 'A',
                     reasoning: v.reasoning || '',
                 });
             }
@@ -108,13 +95,13 @@ Create EXACTLY 3 variants (A, B, C). Subject: 35-55 chars with 1.25%${supportsPe
             console.error(`Content generation failed for segment ${segment.name}:`, err);
             // Fallback content
             variants.push({
-                subject: 'Earn 1.25% More with XDeposit Today 💰',
-                body: `Dear Valued Customer,\n\nWe are excited to offer you **1.25% higher returns** on your savings with SuperBFSI's XDeposit term deposit — the smarter choice for Indian savers.\n\n💡 Why XDeposit?\n- 1.25% above market rates\n- Flexible tenure options\n- Trusted by 50,000+ customers\n\n👉 Explore XDeposit: https://superbfsi.com/xdeposit/explore/\n\nReply for personalized advice — our team responds within 2 hours.\n\nBest regards,\nSuperBFSI Team`,
+                subject: 'SuperBFSI XDeposit - Higher Returns Await! 🏦',
+                body: `Dear Valued Customer,\n\nWe are thrilled to introduce **XDeposit** — SuperBFSI's flagship term deposit product offering **1 percentage point higher returns** than competitors! 🎉\n\nDon't miss this opportunity to grow your savings.\n\n👉 Learn more: https://superbfsi.com/xdeposit/explore/\n\nBest regards,\nSuperBFSI Team`,
                 targetSegment: segment.name,
                 customerIds: segment.customerIds || [],
                 variantName: 'A',
                 tone: 'professional',
-                sendTime: segment.recommendedSendTime || '11:00',
+                sendTime: '10:00',
                 reasoning: 'Fallback content due to generation error',
             });
         }

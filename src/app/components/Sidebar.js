@@ -4,13 +4,13 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 
 const NAV_ITEMS = [
-  { label: 'Dashboard', href: '/', icon: 'dashboard' },
-  { label: 'Create', href: '/campaigns/new', icon: 'add_circle' },
-  { label: 'Campaigns', href: '/campaigns', icon: 'campaign' },
-  { label: 'Analytics', href: '/analytics', icon: 'bar_chart' },
-  { label: 'Agent Logs', href: '/ai-studio', icon: 'terminal' },
-  { label: 'Cohort', href: '/cohort', icon: 'group' },
-  { label: 'Settings', href: '/settings', icon: 'settings' },
+  { label: 'Dashboard', href: '/', icon: '📊' },
+  { label: 'Campaigns', href: '/campaigns', icon: '📨' },
+  { label: 'Create Campaign', href: '/campaigns/new', icon: '✨' },
+  { label: 'Customer Cohort', href: '/cohort', icon: '👥' },
+  { label: 'AI Agent Studio', href: '/ai-studio', icon: '🤖' },
+  { label: 'Analytics', href: '/analytics', icon: '📈' },
+  { label: 'Settings', href: '/settings', icon: '⚙️' },
 ];
 
 export default function Sidebar({ isOpen, onClose }) {
@@ -18,8 +18,7 @@ export default function Sidebar({ isOpen, onClose }) {
 
   const isActive = (href) => {
     if (href === '/') return pathname === '/';
-    // Exact match OR starts with href + '/' to avoid /campaigns matching /campaigns/new
-    return pathname === href || pathname.startsWith(href + '/');
+    return pathname.startsWith(href);
   };
 
   return (
@@ -33,24 +32,46 @@ export default function Sidebar({ isOpen, onClose }) {
       )}
       <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
-          <div className="sidebar-logo-icon">
-            <span className="material-symbols-outlined" style={{ color: '#fff', fontSize: 22 }}>auto_awesome</span>
-          </div>
-          <div>
-            <span className="sidebar-logo">CampaignX</span>
-            <div className="sidebar-subtitle">AI Automation</div>
-          </div>
+          <span className="sidebar-logo">CampaignX</span>
+          <span className="sidebar-badge">AI</span>
         </div>
 
         <nav className="sidebar-nav">
-          {NAV_ITEMS.map((item) => (
+          <div className="sidebar-nav-label">Main</div>
+          {NAV_ITEMS.slice(0, 4).map((item) => (
             <Link
               key={item.href}
               href={item.href}
               className={`sidebar-nav-item ${isActive(item.href) ? 'active' : ''}`}
               onClick={onClose}
             >
-              <span className="material-symbols-outlined nav-icon">{item.icon}</span>
+              <span className="nav-icon">{item.icon}</span>
+              {item.label}
+            </Link>
+          ))}
+
+          <div className="sidebar-nav-label">Intelligence</div>
+          {NAV_ITEMS.slice(4, 6).map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`sidebar-nav-item ${isActive(item.href) ? 'active' : ''}`}
+              onClick={onClose}
+            >
+              <span className="nav-icon">{item.icon}</span>
+              {item.label}
+            </Link>
+          ))}
+
+          <div className="sidebar-nav-label">System</div>
+          {NAV_ITEMS.slice(6).map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`sidebar-nav-item ${isActive(item.href) ? 'active' : ''}`}
+              onClick={onClose}
+            >
+              <span className="nav-icon">{item.icon}</span>
               {item.label}
             </Link>
           ))}
@@ -61,9 +82,8 @@ export default function Sidebar({ isOpen, onClose }) {
             <div className="sidebar-avatar">SB</div>
             <div className="sidebar-user-info">
               <div className="sidebar-user-name">SuperBFSI</div>
-              <div className="sidebar-user-role">Pro Account</div>
+              <div className="sidebar-user-role">Campaign Manager</div>
             </div>
-            <span className="material-symbols-outlined" style={{ color: 'var(--text-muted)', fontSize: 20, cursor: 'pointer' }}>logout</span>
           </div>
         </div>
       </aside>

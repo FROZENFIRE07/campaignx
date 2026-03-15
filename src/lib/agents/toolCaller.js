@@ -95,204 +95,23 @@ function parseCSVLine(line) {
     return fields;
 }
 
-function extractCampaignId(text = '') {
-    const uuidMatch = String(text).match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
-    return uuidMatch ? uuidMatch[0] : null;
-}
-
-async function deterministicApiFallback(taskDescription, context, tools, apiKey, localSources) {
-    const lowerTask = String(taskDescription || '').toLowerCase();
-
-    const sendTool = tools.find(t => t.method === 'POST' && (
-        /send|campaign|dispatch|email|deliver/i.test(t.path) ||
-        /send|campaign|dispatch|email|deliver/i.test(t.name || '') ||
-        /send|campaign|dispatch|email|deliver/i.test(t.description || '')
-    ));
-    const cohortTool = tools.find(t => t.method === 'GET' && (
-        /cohort|customer/i.test(t.path) || /cohort|customer/i.test(t.name || '')
-    ));
-    const reportTool = tools.find(t => t.method === 'GET' && (
-        /report/i.test(t.path) || /report/i.test(t.name || '')
-    ));
-
-    if (lowerTask.includes('send') && context?._customerIds && sendTool) {
-        const result = await executeAPICall(sendTool, {}, {
-            subject: context._emailSubject || 'SuperBFSI - New Offer',
-            body: context._emailBody || 'Check out our latest offering from SuperBFSI!',
-            list_customer_ids: context._customerIds,
-            send_time: context._sendTime,
-        }, apiKey);
-        if (result.status < 400) {
-            return {
-                success: true,
-                reasoning: '[DETERMINISTIC-FALLBACK] Used direct send_campaign call because LLM planning was unavailable.',
-                apiCall: { tool: sendTool.name, method: sendTool.method, path: sendTool.path },
-                result: result.data,
-                adaptedSource: 'deterministic_fallback',
-            };
-        }
-    }
-
-    if (lowerTask.includes('cohort') && cohortTool) {
-        const result = await executeAPICall(cohortTool, {}, null, apiKey);
-        if (result.status < 400) {
-            return {
-                success: true,
-                reasoning: '[DETERMINISTIC-FALLBACK] Used direct cohort endpoint because LLM planning was unavailable.',
-                apiCall: { tool: cohortTool.name, method: cohortTool.method, path: cohortTool.path },
-                result: result.data,
-                adaptedSource: 'deterministic_fallback',
-            };
-        }
-
-        // Last resort: local CSV source for cohort-style tasks
-        if (localSources.length > 0) {
-            const source = [...localSources].sort((a, b) => b.recordCount - a.recordCount)[0];
-            const data = await loadCSVCohort(source.path);
-            return {
-                success: true,
-                reasoning: `[DETERMINISTIC-FALLBACK] Loaded local cohort file "${source.name}" because network and LLM planning were unavailable.`,
-                apiCall: { tool: 'local_csv', method: 'FILE_READ', path: source.name },
-                result: { data, total_count: data.length, message: `Loaded from local file: ${source.name}`, source: 'local_csv_fallback' },
-                adaptedSource: 'local_csv',
-            };
-        }
-    }
-
-    if (lowerTask.includes('report') && reportTool) {
-        const campaignId = context?.campaignId || extractCampaignId(taskDescription) || extractCampaignId(context?.additionalInfo || '');
-        const params = campaignId ? { campaign_id: campaignId } : {};
-        const result = await executeAPICall(reportTool, params, null, apiKey);
-        if (result.status < 400) {
-            return {
-                success: true,
-                reasoning: '[DETERMINISTIC-FALLBACK] Used direct report endpoint because LLM planning was unavailable.',
-                apiCall: { tool: reportTool.name, method: reportTool.method, path: reportTool.path },
-                result: result.data,
-                adaptedSource: 'deterministic_fallback',
-            };
-        }
-    }
-
-    return null;
-}
-
-/**
- * DETERMINISTIC FAST-PATH: Resolve the tool and params without calling the LLM.
- * Covers the 3 known operational endpoints: cohort fetch, campaign send, report fetch.
- * Returns null if the task doesn't match — caller falls through to LLM-based routing.
- */
-async function deterministicToolRoute(taskDescription, context, tools, apiKey, localSources) {
-    const lowerTask = String(taskDescription || '').toLowerCase();
-
-    const sendTool = tools.find(t => t.method === 'POST' && (
-        /send|campaign|dispatch|email|deliver/i.test(t.path) ||
-        /send|campaign|dispatch|email|deliver/i.test(t.name || '')
-    ));
-    const cohortTool = tools.find(t => t.method === 'GET' && (
-        /cohort|customer/i.test(t.path) || /cohort|customer/i.test(t.name || '')
-    ));
-    const reportTool = tools.find(t => t.method === 'GET' && (
-        /report/i.test(t.path) || /report/i.test(t.name || '')
-    ));
-
-    // ── SEND CAMPAIGN ─────────────────────────────────────────────────────────
-    if ((lowerTask.includes('send') || lowerTask.includes('email campaign')) && context?._customerIds && sendTool) {
-        console.log(`[TOOL-CALLER] ⚡ DETERMINISTIC: send_campaign (${context._customerIds.length} customers, no LLM needed)`);
-        const result = await executeAPICall(sendTool, {}, {
-            subject: context._emailSubject || 'SuperBFSI XDeposit — Earn 1.25% More 💰',
-            body: context._emailBody || 'Earn 1.25% higher returns with XDeposit. 👉 https://superbfsi.com/xdeposit/explore/',
-            list_customer_ids: context._customerIds,
-            send_time: context._sendTime,
-        }, apiKey);
-        if (result.status < 400) {
-            return {
-                success: true,
-                reasoning: '[DETERMINISTIC] Direct send_campaign — no LLM routing needed.',
-                apiCall: { tool: sendTool.name, method: sendTool.method, path: sendTool.path },
-                result: result.data,
-                deterministic: true,
-            };
-        }
-        console.log(`[TOOL-CALLER]   ⚡ Deterministic send failed (${result.status}) — falling back to LLM routing`);
-        return null;
-    }
-
-    // ── FETCH COHORT ──────────────────────────────────────────────────────────
-    if ((lowerTask.includes('cohort') || lowerTask.includes('customer cohort') || lowerTask.includes('fetch customer')) && cohortTool) {
-        console.log(`[TOOL-CALLER] ⚡ DETERMINISTIC: get_customer_cohort (no LLM needed)`);
-        const result = await executeAPICall(cohortTool, {}, null, apiKey);
-        if (result.status < 400) {
-            return {
-                success: true,
-                reasoning: '[DETERMINISTIC] Direct cohort fetch — no LLM routing needed.',
-                apiCall: { tool: cohortTool.name, method: cohortTool.method, path: cohortTool.path },
-                result: result.data,
-                deterministic: true,
-            };
-        }
-        // Fallback to local CSV if API fails
-        if (localSources.length > 0) {
-            const source = [...localSources].sort((a, b) => b.recordCount - a.recordCount)[0];
-            const data = await loadCSVCohort(source.path);
-            return {
-                success: true,
-                reasoning: `[DETERMINISTIC] Cohort API failed — loaded local file "${source.name}".`,
-                apiCall: { tool: 'local_csv', method: 'FILE_READ', path: source.name },
-                result: { data, total_count: data.length, source: 'local_csv_fallback' },
-                deterministic: true,
-            };
-        }
-        return null;
-    }
-
-    // ── FETCH REPORT ──────────────────────────────────────────────────────────
-    if ((lowerTask.includes('report') || lowerTask.includes('performance report') || lowerTask.includes('get_report')) && reportTool) {
-        const campaignId = context?.campaignId || extractCampaignId(taskDescription) || extractCampaignId(context?.additionalInfo || '');
-        if (campaignId) {
-            console.log(`[TOOL-CALLER] ⚡ DETERMINISTIC: get_report (campaign_id=${campaignId}, no LLM needed)`);
-            const result = await executeAPICall(reportTool, { campaign_id: campaignId }, null, apiKey);
-            if (result.status < 400) {
-                return {
-                    success: true,
-                    reasoning: '[DETERMINISTIC] Direct report fetch — no LLM routing needed.',
-                    apiCall: { tool: reportTool.name, method: reportTool.method, path: reportTool.path },
-                    result: result.data,
-                    deterministic: true,
-                };
-            }
-        }
-        return null;
-    }
-
-    return null; // No match — let LLM handle it
-}
-
 /**
  * Given a task description, the LLM reads the API docs and decides
  * which API to call, constructs the request, and returns the result.
  * Includes a self-correction loop for error handling.
- *
- * FAST-PATH: Known operational tasks (cohort/send/report) bypass LLM entirely.
- * LLM is only called for novel/unknown tasks — saving 70-80% of token budget.
+ * 
+ * ADAPTIVE: After repeated API failures, the agent discovers local data
+ * sources and can choose to use them as a fallback.
  */
 export async function agenticToolCall(taskDescription, context = {}, maxRetries = 3) {
     const apiKey = process.env.CAMPAIGNX_API_KEY;
     const { tools: allTools } = await getAPITools();
     // Only show campaign-relevant APIs (signup is one-time, API key already obtained)
     const tools = getOperationalTools(allTools);
+    const toolDescs = buildToolDescriptions(tools);
 
     // Detect local data sources the agent can use if APIs fail
     const localSources = await detectLocalDataSources();
-
-    // ⚡ DETERMINISTIC FAST-PATH — try known endpoints before touching the LLM
-    // This saves ~70-80% of daily token budget and prevents 429 rate limit errors.
-    const fastResult = await deterministicToolRoute(taskDescription, context, tools, apiKey, localSources);
-    if (fastResult) return fastResult;
-
-    // LLM-based routing — only reached for novel/unknown tasks
-    console.log(`[TOOL-CALLER] No deterministic match — invoking LLM for: "${taskDescription.substring(0, 60)}..."`);
-    const toolDescs = buildToolDescriptions(tools);
     const localSourceDesc = localSources.length > 0
         ? `\n\nLOCAL DATA SOURCES (available as fallback if API is down):\n${localSources.map(s =>
             `- File: "${s.name}" (${s.recordCount} records)\n  Headers: ${s.header}\n  Sample: ${s.sampleRow}`
@@ -477,18 +296,6 @@ If no API call is needed (e.g., the task is pure analysis), respond:
     }
 
     console.error(`[TOOL-CALLER] ✗ All ${maxRetries} attempts failed. Last error: ${lastError}`);
-
-    // Deterministic fallback path for known tasks when LLM planning is unavailable
-    try {
-        const fallbackResult = await deterministicApiFallback(taskDescription, context, tools, apiKey, localSources);
-        if (fallbackResult) {
-            console.log('[TOOL-CALLER] ✓ Deterministic fallback succeeded');
-            return { ...fallbackResult, attempts: maxRetries };
-        }
-    } catch (fallbackError) {
-        console.error(`[TOOL-CALLER] ✗ Deterministic fallback failed: ${fallbackError.message}`);
-    }
-
     return { success: false, error: lastError, attempts: maxRetries };
 }
 

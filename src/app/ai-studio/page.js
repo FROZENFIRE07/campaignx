@@ -1,219 +1,296 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 
-const AGENT_FILTERS = [
-  { label: 'All Agents', key: 'all', color: 'var(--accent-primary)' },
-  { label: 'System', key: 'system', color: 'var(--text-muted)' },
-  { label: 'Strategy', key: 'strategy', color: '#c084fc' },
-  { label: 'Content', key: 'content', color: '#60a5fa' },
-  { label: 'Tool Calls', key: 'tool', color: '#4ade80' },
+const AGENTS = [
+  { name: 'orchestrator', label: 'Orchestrator', icon: '🎭', desc: 'Coordinates all agents' },
+  { name: 'strategy', label: 'Strategy Agent', icon: '🧠', desc: 'Segmentation & planning' },
+  { name: 'content', label: 'Content Agent', icon: '✍️', desc: 'Email generation' },
+  { name: 'analysis', label: 'Analysis Agent', icon: '📊', desc: 'Performance analysis' },
 ];
 
-const AGENT_STATUS = [
-  { name: 'Orchestrator', status: 'online' },
-  { name: 'Strategy Agent', status: 'online' },
-  { name: 'Content Agent', status: 'processing' },
-  { name: 'Analysis Agent', status: 'online' },
-];
+const TABS = ['Activity Feed', 'Reasoning Trail', 'API Discovery'];
 
-const NAV_ITEMS = [
-  { icon: 'dashboard', label: 'Dashboard', active: false },
-  { icon: 'smart_toy', label: 'Agents', active: false },
-  { icon: 'terminal', label: 'Runtime Logs', active: true },
-  { icon: 'history', label: 'History', active: false },
-];
-
-export default function AIStudio() {
+export default function AIAgentStudio() {
+  const [tab, setTab] = useState('Activity Feed');
   const [logs, setLogs] = useState([]);
+  const [tools, setTools] = useState([]);
+  const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeFilter, setActiveFilter] = useState('all');
-  const [isLive, setIsLive] = useState(true);
-  const logContainer = useRef(null);
+  const [selectedCampaign, setSelectedCampaign] = useState('all');
+  const [agentFilter, setAgentFilter] = useState('all');
+  const [searchLog, setSearchLog] = useState('');
 
   useEffect(() => {
-    fetch('/api/logs')
-      .then((r) => r.json())
-      .then((data) => {
-        const apiLogs = (data.logs || []).map((l) => ({
-          timestamp: l.createdAt
-            ? new Date(l.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-            : '--:--:--',
-          agent: l.agent || 'system',
-          step: l.step || '',
-          reasoning: l.reasoning || '',
-          createdAt: l.createdAt || '',
-          type: l.type || 'info',
-        }));
-        setLogs(apiLogs.length > 0 ? apiLogs : defaultLogs());
+    Promise.all([
+      fetch('/api/logs').then((r) => r.json()),
+      fetch('/api/discover').then((r) => r.json()),
+      fetch('/api/agent').then((r) => r.json()),
+    ])
+      .then(([logData, toolData, campData]) => {
+        setLogs(logData.logs || []);
+        setTools(toolData.tools || []);
+        setCampaigns(campData.campaigns || []);
       })
-      .catch(() => setLogs(defaultLogs()))
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
-    if (logContainer.current) {
-      logContainer.current.scrollTop = logContainer.current.scrollHeight;
-    }
+  // Agent stats
+  const agentStats = useMemo(() => {
+    const stats = {};
+    AGENTS.forEach((a) => { stats[a.name] = { total: 0, last: null }; });
+    logs.forEach((l) => {
+      if (stats[l.agent]) {
+        stats[l.agent].total++;
+        if (!stats[l.agent].last || new Date(l.createdAt) > new Date(stats[l.agent].last)) {
+          stats[l.agent].last = l.createdAt;
+        }
+      }
+    });
+    return stats;
   }, [logs]);
 
-  const filteredLogs = activeFilter === 'all'
-    ? logs
-    : logs.filter((l) => l.agent?.toLowerCase().includes(activeFilter));
+  // Filtered logs
+  const filteredLogs = useMemo(() => {
+    let list = [...logs];
+    if (selectedCampaign !== 'all') list = list.filter((l) => l.campaignId === selectedCampaign);
+    if (agentFilter !== 'all') list = list.filter((l) => l.agent === agentFilter);
+    if (searchLog.trim()) {
+      const q = searchLog.toLowerCase();
+      list = list.filter((l) => (l.reasoning || '').toLowerCase().includes(q) || (l.step || '').toLowerCase().includes(q));
+    }
+    return list;
+  }, [logs, selectedCampaign, agentFilter, searchLog]);
 
-  const tagClass = (agent) => {
-    const t = agent?.toLowerCase() || '';
-    if (t.includes('strategy')) return 'terminal-tag-strategy';
-    if (t.includes('content')) return 'terminal-tag-content';
-    if (t.includes('tool') || t.includes('optim')) return 'terminal-tag-tool';
-    return 'terminal-tag-system';
+  // Grouped reasoning trail
+  const reasoningTrail = useMemo(() => {
+    const camLogs = selectedCampaign !== 'all'
+      ? logs.filter((l) => l.campaignId === selectedCampaign)
+      : logs;
+    // Group by step
+    const grouped = {};
+    camLogs.forEach((l) => {
+      const key = l.step || 'general';
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(l);
+    });
+    return grouped;
+  }, [logs, selectedCampaign]);
+
+  const relativeTime = (date) => {
+    if (!date) return '—';
+    const d = new Date(date);
+    const now = new Date();
+    const diff = Math.floor((now - d) / 1000);
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return d.toLocaleDateString();
   };
 
-  const textClass = (log) => {
-    const t = log.agent?.toLowerCase() || '';
-    if (t.includes('tool') || t.includes('optim')) return 'terminal-text-tool';
-    if (log.type === 'response') return 'terminal-text-response';
-    return 'terminal-text';
-  };
+  if (loading) {
+    return (
+      <>
+        <div className="g4" style={{ marginBottom: 24 }}>
+          {[1, 2, 3, 4].map((i) => <div key={i} className="stat-card"><div className="skeleton skeleton-text" style={{ width: '60%', height: 28 }} /></div>)}
+        </div>
+        <div className="card"><div className="skeleton skeleton-text" style={{ width: '100%', height: 300 }} /></div>
+      </>
+    );
+  }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: 24, height: 'calc(100vh - 140px)' }}>
-      {/* Left Sidebar Nav */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {NAV_ITEMS.map((item) => (
-            <button key={item.label}
-              className={`sidebar-nav-item ${item.active ? 'active' : ''}`}
-              style={{ textAlign: 'left', fontSize: 13, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10, border: 'none', background: item.active ? 'var(--accent-primary)' : 'transparent', color: item.active ? '#fff' : 'var(--text-muted)', borderRadius: 10, cursor: 'pointer', fontFamily: 'Inter, sans-serif', fontWeight: item.active ? 600 : 400 }}
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{item.icon}</span>
-              {item.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Agent Status */}
-        <div className="agent-status-card">
-          <div className="agent-status-title">Agent Status</div>
-          {AGENT_STATUS.map((agent) => (
-            <div className="agent-status-row" key={agent.name}>
-              <span className="agent-status-name">{agent.name}</span>
-              <span className={`agent-status-dot agent-status-dot-${agent.status}`} />
+    <>
+      {/* Agent Status Cards */}
+      <div className="g4" style={{ marginBottom: 24 }}>
+        {AGENTS.map((a) => {
+          const s = agentStats[a.name];
+          return (
+            <div key={a.name} className="stat-card" onClick={() => setAgentFilter(agentFilter === a.name ? 'all' : a.name)} style={{ cursor: 'pointer', border: agentFilter === a.name ? '1px solid var(--accent)' : undefined }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <div className={`agent-avatar ${a.name}`}>{a.icon}</div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{a.label}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{a.desc}</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                <span style={{ color: 'var(--text-muted)' }}>{s?.total || 0} actions</span>
+                <span style={{ color: s?.total > 0 ? 'var(--accent-green)' : 'var(--text-muted)', fontWeight: 600 }}>
+                  {s?.total > 0 ? '● Active' : '○ Idle'}
+                </span>
+              </div>
             </div>
-          ))}
-        </div>
+          );
+        })}
       </div>
 
-      {/* Main Terminal */}
-      <div className="glass-dark terminal-container">
-        {/* Terminal Header */}
-        <div className="terminal-header">
-          <div className="terminal-dots">
-            <div className="terminal-dot terminal-dot-red" />
-            <div className="terminal-dot terminal-dot-yellow" />
-            <div className="terminal-dot terminal-dot-green" />
-          </div>
-          <span className="terminal-title">Agent Runtime Logs</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <button
-              onClick={() => setIsLive(!isLive)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6, padding: '4px 12px',
-                borderRadius: 999, fontFamily: 'JetBrains Mono, monospace', fontSize: 10, fontWeight: 700,
-                textTransform: 'uppercase', letterSpacing: 2, cursor: 'pointer', border: 'none',
-                background: isLive ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.05)',
-                color: isLive ? 'var(--accent-green)' : 'var(--text-muted)',
-              }}
-            >
-              {isLive && <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-green)', display: 'inline-block', animation: 'livePulse 1.5s infinite' }} />}
-              {isLive ? 'Live' : 'Paused'}
-            </button>
-            <button className="btn btn-ghost btn-sm" style={{ fontSize: 10, padding: '4px 10px' }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 14 }}>download</span> Export
-            </button>
-            <button className="btn btn-ghost btn-sm" style={{ fontSize: 10, padding: '4px 10px' }} onClick={() => setLogs(defaultLogs())}>
-              <span className="material-symbols-outlined" style={{ fontSize: 14 }}>delete</span> Clear
-            </button>
-          </div>
-        </div>
+      {/* Tabs */}
+      <div className="tabs tabs-underline" style={{ marginBottom: 24 }}>
+        {TABS.map((t) => (
+          <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>{t}</button>
+        ))}
+      </div>
 
-        {/* Agent Filter Pills */}
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(163,230,53,0.1)', display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div className="agent-pills">
-            {AGENT_FILTERS.map((f) => (
-              <button
-                key={f.key}
-                className={`agent-pill ${activeFilter === f.key ? 'active' : ''}`}
-                onClick={() => setActiveFilter(f.key)}
-              >
-                <span className="agent-pill-dot" style={{ background: f.color }} />
-                {f.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Terminal Body */}
-        <div className="terminal-body" ref={logContainer}>
-          {loading ? (
-            <div className="loading-state">
-              <div className="spinner" />
-              <p>Connecting to agent runtime...</p>
+      {/* ─── Activity Feed ─── */}
+      {tab === 'Activity Feed' && (
+        <>
+          <div className="toolbar" style={{ marginBottom: 16 }}>
+            <div className="search-box" style={{ flex: 1, maxWidth: 300 }}>
+              <span className="search-icon">🔍</span>
+              <input className="search-input" placeholder="Search activity..." value={searchLog} onChange={(e) => setSearchLog(e.target.value)} />
             </div>
-          ) : filteredLogs.length > 0 ? (
-            filteredLogs.map((log, i) => (
-              <div key={i} className={`terminal-line ${log.type === 'highlight' ? 'highlight' : ''}`}>
-                <span className="terminal-timestamp">{log.timestamp}</span>
-                <span className={`terminal-tag ${tagClass(log.agent)}`}>[{log.agent}]</span>
-                {log.step && <span style={{ color: 'var(--accent-primary)', fontWeight: 600, marginRight: 6 }}>[{log.step}]</span>}
-                <span className={textClass(log)}>{log.reasoning}</span>
+            <select className="select" style={{ width: 'auto' }} value={agentFilter} onChange={(e) => setAgentFilter(e.target.value)}>
+              <option value="all">All Agents</option>
+              {AGENTS.map((a) => <option key={a.name} value={a.name}>{a.label}</option>)}
+            </select>
+            <select className="select" style={{ width: 'auto' }} value={selectedCampaign} onChange={(e) => setSelectedCampaign(e.target.value)}>
+              <option value="all">All Campaigns</option>
+              {campaigns.map((c) => <option key={c._id} value={c._id}>{c.brief?.substring(0, 40) || c._id}</option>)}
+            </select>
+          </div>
+
+          {/* Stats Summary */}
+          <div className="g4" style={{ marginBottom: 20 }}>
+            <div className="mtile"><div className="mtile-val">{logs.length}</div><div className="mtile-label">Total Actions</div></div>
+            <div className="mtile"><div className="mtile-val">{logs.filter((l) => l.duration).length > 0 ? Math.round(logs.filter((l) => l.duration).reduce((s, l) => s + l.duration, 0) / logs.filter((l) => l.duration).length) : '—'}</div><div className="mtile-label">Avg Duration (ms)</div></div>
+            <div className="mtile"><div className="mtile-val">{new Set(logs.map((l) => l.agent)).size}</div><div className="mtile-label">Agents Used</div></div>
+            <div className="mtile"><div className="mtile-val">{new Set(logs.map((l) => l.campaignId)).size}</div><div className="mtile-label">Campaigns</div></div>
+          </div>
+
+          {filteredLogs.length > 0 ? (
+            <div className="card">
+              <div className="agent-log" style={{ maxHeight: 600 }}>
+                {filteredLogs.map((l, i) => (
+                  <div key={i} className={`log-item ${l.agent}`}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'flex-start', gap: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                          <span className="log-agent">{l.agent}</span>
+                          {l.step && <span className="badge badge-sm badge-ai">{l.step}</span>}
+                        </div>
+                        <span className="log-msg">{l.reasoning || l.output?.substring?.(0, 200) || '—'}</span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{relativeTime(l.createdAt)}</span>
+                        {l.duration && <span style={{ fontSize: 10, color: 'var(--accent-blue)' }}>{l.duration}ms</span>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))
+            </div>
           ) : (
-            <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)' }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 48, marginBottom: 12, display: 'block', opacity: 0.3 }}>terminal</span>
-              No logs matching filter
+            <div className="empty-state">
+              <div className="empty-icon">🤖</div>
+              <h3 className="empty-title">No agent activity</h3>
+              <p className="empty-desc">Create a campaign to see AI agent reasoning and activity.</p>
             </div>
           )}
-        </div>
+        </>
+      )}
 
-        {/* Terminal Footer */}
-        <div className="terminal-footer">
-          <span className="terminal-prompt">&gt;</span>
-          <input className="terminal-input" placeholder="Enter command or query..." />
-          <div className="terminal-metrics">
-            <div className="terminal-metric">
-              <span className="terminal-metric-label">Memory</span>
-              <div className="terminal-metric-bar">
-                <div className="terminal-metric-fill" style={{ width: '45%', background: 'var(--accent-primary)' }} />
-              </div>
-            </div>
-            <div className="terminal-metric">
-              <span className="terminal-metric-label">CPU</span>
-              <div className="terminal-metric-bar">
-                <div className="terminal-metric-fill" style={{ width: '72%', background: 'var(--accent-green)' }} />
-              </div>
-            </div>
+      {/* ─── Reasoning Trail ─── */}
+      {tab === 'Reasoning Trail' && (
+        <>
+          <div style={{ marginBottom: 16 }}>
+            <select className="select" style={{ maxWidth: 400 }} value={selectedCampaign} onChange={(e) => setSelectedCampaign(e.target.value)}>
+              <option value="all">All Campaigns</option>
+              {campaigns.map((c) => <option key={c._id} value={c._id}>{c.brief?.substring(0, 60) || c._id}</option>)}
+            </select>
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
-function defaultLogs() {
-  return [
-    { timestamp: '14:32:01', agent: 'System', step: 'init', reasoning: 'Initializing CampaignX Multi-Agent Runtime v4.2.1...', createdAt: new Date().toISOString(), type: 'info' },
-    { timestamp: '14:32:02', agent: 'System', step: 'init', reasoning: 'Loading strategy, content, and analysis agent modules.', createdAt: new Date().toISOString(), type: 'info' },
-    { timestamp: '14:32:03', agent: 'System', step: 'connect', reasoning: 'Connected to LLM endpoint: groq/llama-3.3-70b-versatile', createdAt: new Date().toISOString(), type: 'highlight' },
-    { timestamp: '14:32:04', agent: 'System', step: 'ready', reasoning: 'All agents initialized. Runtime ready.', createdAt: new Date().toISOString(), type: 'info' },
-    { timestamp: '14:32:10', agent: 'Strategy', step: 'analyze', reasoning: 'Received campaign brief. Analyzing target audience and market positioning...', createdAt: new Date().toISOString(), type: 'info' },
-    { timestamp: '14:32:15', agent: 'Strategy', step: 'segment', reasoning: 'Market analysis complete. Identified 3 key segments: Enterprise SaaS, Mid-Market, SMB.', createdAt: new Date().toISOString(), type: 'info' },
-    { timestamp: '14:32:20', agent: 'Tool_Call', step: 'discover', reasoning: 'POST /api/discover → 200 OK (discovered 12 API tools)', createdAt: new Date().toISOString(), type: 'info' },
-    { timestamp: '14:32:25', agent: 'Content', step: 'generate', reasoning: 'Generating email variants for segment "Enterprise SaaS"...', createdAt: new Date().toISOString(), type: 'info' },
-    { timestamp: '14:32:30', agent: 'Content', step: 'complete', reasoning: 'Generated 3 email variants. Subject lines optimized for open rate.', createdAt: new Date().toISOString(), type: 'info' },
-    { timestamp: '14:32:35', agent: 'Tool_Call', step: 'fetch', reasoning: 'GET /api/agent → 200 OK (fetched 8 active campaigns)', createdAt: new Date().toISOString(), type: 'info' },
-    { timestamp: '14:32:40', agent: 'Strategy', step: 'schedule', reasoning: 'Recommending send window: Tuesday 10:00 AM EST based on historical data.', createdAt: new Date().toISOString(), type: 'info' },
-    { timestamp: '14:32:45', agent: 'System', step: 'done', reasoning: 'Campaign orchestration complete. Awaiting human approval.', createdAt: new Date().toISOString(), type: 'highlight' },
-  ];
+          {Object.keys(reasoningTrail).length > 0 ? (
+            <div className="card">
+              <div className="timeline">
+                {Object.entries(reasoningTrail).map(([step, items], si) => (
+                  <div key={si}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 8, marginTop: si > 0 ? 20 : 0 }}>
+                      Step: {step}
+                    </div>
+                    {items.map((l, i) => (
+                      <div key={i} className="timeline-item">
+                        <div className={`timeline-dot done`} />
+                        <div className="timeline-content">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                            <div className="timeline-title">{l.agent}</div>
+                            {l.duration && <span style={{ fontSize: 10, color: 'var(--accent-blue)' }}>{l.duration}ms</span>}
+                          </div>
+                          <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                            {l.reasoning || l.output?.substring?.(0, 300) || '—'}
+                          </div>
+                          <div className="timeline-time">{relativeTime(l.createdAt)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="empty-state">
+              <div className="empty-icon">🧵</div>
+              <h3 className="empty-title">No reasoning data</h3>
+              <p className="empty-desc">Select a campaign or create one to view the agent reasoning trail.</p>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ─── API Discovery ─── */}
+      {tab === 'API Discovery' && (
+        <>
+          {tools.length > 0 ? (
+            <>
+              <div className="g4" style={{ marginBottom: 20 }}>
+                <div className="mtile"><div className="mtile-val">{tools.length}</div><div className="mtile-label">Endpoints Discovered</div></div>
+                <div className="mtile"><div className="mtile-val">{tools.filter((t) => t.method === 'GET').length}</div><div className="mtile-label">GET Endpoints</div></div>
+                <div className="mtile"><div className="mtile-val">{tools.filter((t) => t.method === 'POST').length}</div><div className="mtile-label">POST Endpoints</div></div>
+                <div className="mtile"><div className="mtile-val">{new Set(tools.map((t) => t.path.split('/').slice(0, 4).join('/'))).size}</div><div className="mtile-label">API Groups</div></div>
+              </div>
+
+              <div className="g2">
+                {tools.map((t, i) => (
+                  <div key={i} className="api-tool" style={{ padding: 16, borderRadius: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                      <span className={`api-method ${t.method.toLowerCase()}`}>{t.method}</span>
+                      <code style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{t.path}</code>
+                    </div>
+                    <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 10 }}>
+                      {t.description}
+                    </p>
+                    {t.parameters && t.parameters.length > 0 && (
+                      <div style={{ marginTop: 8 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>Parameters</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {t.parameters.map((p, pi) => (
+                            <span key={pi} className="badge badge-sm">{typeof p === 'string' ? p : p.name || JSON.stringify(p)}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {t.requestBody && (
+                      <div style={{ marginTop: 8 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>Request Body</div>
+                        <pre style={{ fontSize: 10, color: 'var(--text-muted)', background: 'var(--bg-primary)', padding: 8, borderRadius: 6, overflow: 'auto', maxHeight: 100 }}>
+                          {typeof t.requestBody === 'string' ? t.requestBody : JSON.stringify(t.requestBody, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="empty-state">
+              <div className="empty-icon">🔌</div>
+              <h3 className="empty-title">No APIs discovered</h3>
+              <p className="empty-desc">APIs are discovered from the OpenAPI spec when agents start analyzing campaigns.</p>
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
 }

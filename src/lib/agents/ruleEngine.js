@@ -8,62 +8,14 @@
  * 
  * Supported operators:
  *   equals, not_equals, in, not_in,
- *   between, not_between, gt, gte, lt, lte,
+ *   between, gt, gte, lt, lte,
  *   contains, not_contains
  * 
  * Rules within a segment are combined with AND logic.
- * Segments are made mutually exclusive in execution order to avoid duplicate sends.
+ * Multiple segments can overlap; unassigned customers are distributed proportionally.
  */
 
 import { detectIdField, analyzeSchema } from './schemaAnalyzer';
-
-/**
- * Build a map from normalized (lowercased, no separators) field names to
- * actual cohort field names. This allows the rule engine to tolerate LLM
- * output that uses slightly different casing or separators than the real
- * cohort fields (e.g. "Monthly_Income" vs "monthly_income" vs "Income").
- *
- * Returns a function: resolveField(llmFieldName) → actualFieldName | null
- */
-function buildFieldResolver(cohortFields) {
-    // Exact lookup (fastest path)
-    const exactSet = new Set(cohortFields);
-
-    // Normalized lookup: strip underscores/spaces/hyphens and lowercase
-    const normalize = (name) => name.toLowerCase().replace(/[_\-\s]+/g, '');
-    const normalizedMap = new Map(); // normalized → actual
-    for (const f of cohortFields) {
-        normalizedMap.set(normalize(f), f);
-    }
-
-    // Substring containment cache: for LLM shortening like "Income" → "Monthly_Income"
-    const lowerFields = cohortFields.map(f => ({ lower: f.toLowerCase(), actual: f }));
-
-    return function resolveField(llmField) {
-        // 1. Exact match
-        if (exactSet.has(llmField)) return llmField;
-
-        // 2. Normalized match (case + separator insensitive)
-        const norm = normalize(llmField);
-        if (normalizedMap.has(norm)) return normalizedMap.get(norm);
-
-        // 3. Case-insensitive exact match
-        const lower = llmField.toLowerCase();
-        const ciMatch = lowerFields.find(f => f.lower === lower);
-        if (ciMatch) return ciMatch.actual;
-
-        // 4. Substring containment: LLM used a shorter name that is contained
-        //    in (or contains) an actual field name
-        //    e.g. "Income" matches "Monthly_Income", "CreditScore" matches "Credit_score"
-        const substringMatch = lowerFields.find(f =>
-            f.lower.includes(norm) || norm.includes(normalize(f.actual))
-        );
-        if (substringMatch) return substringMatch.actual;
-
-        // No match found
-        return null;
-    };
-}
 
 /**
  * Evaluate a single rule against a customer record.
@@ -97,10 +49,6 @@ function evaluateRule(record, rule) {
         case 'between':
             if (isNaN(numVal) || values.length < 2) return false;
             return numVal >= Number(values[0]) && numVal <= Number(values[1]);
-
-        case 'not_between':
-            if (isNaN(numVal) || values.length < 2) return false;
-            return numVal < Number(values[0]) || numVal > Number(values[1]);
 
         case 'gt':
             return !isNaN(numVal) && numVal > Number(values[0]);
@@ -137,28 +85,10 @@ function evaluateRule(record, rule) {
 function normalizeRule(rule) {
     // Already normalized
     if (rule.field && (rule.operator || rule.op) && (rule.values || rule.value !== undefined)) {
-        let values = rule.values ?? [rule.value];
-
-        // LLMs (especially smaller models) may output values as a non-array:
-        //   "values": "Female"  or  "values": 750  or  "values": "41-65"
-        // Ensure values is always an array.
-        if (!Array.isArray(values)) {
-            const valStr = String(values);
-            const op = rule.operator || rule.op;
-
-            // "41-65" string for a between operator → parse into [41, 65]
-            if ((op === 'between' || op === 'not_between') && /^\d+\s*[-–]\s*\d+$/.test(valStr)) {
-                const parts = valStr.split(/[-–]/).map(s => Number(s.trim()));
-                values = parts;
-            } else {
-                values = [values];
-            }
-        }
-
         return {
             field: rule.field,
             operator: rule.operator || rule.op,
-            values,
+            values: rule.values || [rule.value],
         };
     }
 
@@ -217,11 +147,6 @@ export function executeSegmentationRules(segments, cohortData, idField = null) {
         idField = detectIdField(schema);
     }
 
-    // Build a field resolver from actual cohort field names so that LLM-generated
-    // rule field names that differ in casing/separators/abbreviation still match.
-    const cohortFields = cohortData[0] ? Object.keys(cohortData[0]) : [];
-    const resolveField = buildFieldResolver(cohortFields);
-
     const assignedIds = new Set();
 
     for (const segment of segments) {
@@ -239,83 +164,38 @@ export function executeSegmentationRules(segments, cohortData, idField = null) {
             });
         }
 
-        // Resolve LLM field names to actual cohort field names
-        let unresolvedFields = [];
-        rules = rules.map(rule => {
-            const resolved = resolveField(rule.field);
-            if (resolved && resolved !== rule.field) {
-                console.log(`[RULE-ENGINE] Field resolved: "${rule.field}" → "${resolved}"`);
-                return { ...rule, field: resolved };
-            }
-            if (!resolved) {
-                unresolvedFields.push(rule.field);
-            }
-            return rule;
-        });
-
-        if (unresolvedFields.length > 0) {
-            console.warn(`[RULE-ENGINE] Segment "${segment.name}": unresolved fields: ${unresolvedFields.join(', ')} (available: ${cohortFields.join(', ')})`);
-        }
-
-        // Drop rules with unresolvable fields so the segment isn't emptied by a
-        // single bad field name — remaining rules can still match customers.
-        const validRules = rules.filter(rule => {
-            const exists = resolveField(rule.field) !== null;
-            if (!exists) {
-                console.warn(`[RULE-ENGINE] Dropping unresolvable rule for field "${rule.field}" in segment "${segment.name}"`);
-            }
-            return exists;
-        });
-
-        // Log the actual rules being evaluated for debugging
-        for (const rule of validRules) {
-            const sampleVal = cohortData[0]?.[rule.field];
-            console.log(`[RULE-ENGINE]   Rule: ${rule.field} ${rule.operator} ${JSON.stringify(rule.values)} (sample data: ${JSON.stringify(sampleVal)})`);
-        }
-
-        // Filter cohort by ALL valid rules (AND logic), excluding IDs already assigned
-        // to previous segments so each customer is targeted once.
+        // Filter cohort by ALL rules (AND logic)
         const matched = cohortData.filter(record => {
-            const recordId = record[idField];
-            if (assignedIds.has(recordId)) return false;
-            if (validRules.length === 0) return false; // Don't match everyone if all rules were dropped
-            return validRules.every(rule => evaluateRule(record, rule));
+            return rules.every(rule => evaluateRule(record, rule));
         });
 
         segment.customerIds = matched.map(r => r[idField]);
         segment.customerIds.forEach(id => assignedIds.add(id));
         segment.count = segment.customerIds.length;
 
-        console.log(`[RULE-ENGINE] Segment "${segment.name}": ${rules.length} rules (${validRules.length} valid) → ${segment.count} matches`);
+        console.log(`[RULE-ENGINE] Segment "${segment.name}": ${rules.length} rules → ${segment.count} matches`);
     }
 
-    // Distribute unassigned customers — capped at 10% of total cohort to avoid diluting targeting
+    // Distribute unassigned customers proportionally across segments
     const unassigned = cohortData
         .filter(r => !assignedIds.has(r[idField]))
         .map(r => r[idField]);
 
     if (unassigned.length > 0 && segments.length > 0) {
-        const maxDistributable = Math.floor(cohortData.length * 0.10); // hard cap: 10%
-        const toDistribute = unassigned.slice(0, maxDistributable);
-        const skipped = unassigned.length - toDistribute.length;
-
-        if (skipped > 0) {
-            console.log(`[RULE-ENGINE] ${unassigned.length} unassigned — distributing only ${toDistribute.length} (10% cap). Skipping ${skipped} to preserve targeting quality.`);
-        } else {
-            console.log(`[RULE-ENGINE] ${unassigned.length} unassigned customers — distributing proportionally (within 10% cap)`);
-        }
-
+        console.log(`[RULE-ENGINE] ${unassigned.length} unassigned customers — distributing proportionally`);
         const totalAssigned = segments.reduce((sum, s) => sum + (s.customerIds?.length || 0), 0);
+
         let distributed = 0;
         segments.forEach((seg, i) => {
+            // Proportional share based on existing segment size, with minimum 1 per segment
             const proportion = totalAssigned > 0
                 ? (seg.customerIds.length / totalAssigned)
                 : (1 / segments.length);
             const share = i === segments.length - 1
-                ? toDistribute.length - distributed
-                : Math.round(proportion * toDistribute.length);
+                ? unassigned.length - distributed  // Last segment gets remainder
+                : Math.round(proportion * unassigned.length);
 
-            const chunk = toDistribute.slice(distributed, distributed + share);
+            const chunk = unassigned.slice(distributed, distributed + share);
             seg.customerIds = [...seg.customerIds, ...chunk];
             seg.count = seg.customerIds.length;
             distributed += share;

@@ -4,15 +4,10 @@
  */
 
 import { NextResponse } from 'next/server';
-import { orchestrateFullCampaign, executeCampaign, fetchReportWithPolling, analysisAndOptimization } from '@/lib/agents/orchestrator';
+import { orchestrateFullCampaign, executeCampaign, fetchReport, analysisAndOptimization } from '@/lib/agents/orchestrator';
 import { connectDB } from '@/lib/db';
 import Campaign from '@/lib/models/Campaign';
 import AgentLog from '@/lib/models/AgentLog';
-
-function extractCampaignIdFromResult(result) {
-    if (!result || typeof result !== 'object') return null;
-    return result.campaign_id || result.campaignId || result.id || result.data?.campaign_id || result.data?.campaignId || null;
-}
 
 export async function POST(request) {
     try {
@@ -55,56 +50,22 @@ export async function POST(request) {
             const campaign = await Campaign.findById(campaignId);
             if (!campaign) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
 
-            const { results, campaignIds } = await executeCampaign(
+            const results = await executeCampaign(
                 campaign,
                 approvedVariants || campaign.contentVariants
             );
 
-            // Backwards compatibility for string campaginId, and new array for campaignIds
             campaign.status = 'sent';
-            
-            // Just use the first one if length is 1 for backwards compatibility with single string
-            if (campaignIds.length > 0) {
-                campaign.campaignId = campaignIds[0]; 
-                campaign.campaignIds = campaignIds; // Store the full list
-            }
-            
+            campaign.campaignId = results[0]?.campaign_id;
             await campaign.save();
 
-            return NextResponse.json({ success: true, results, campaignId: campaign._id, externalCampaignIds: campaignIds });
+            return NextResponse.json({ success: true, results, campaignId: campaign._id });
         }
 
         if (action === 'report') {
-            // Fetch latest performance report with polling and optional DB campaign lookup
-            const { dbCampaignId } = body;
-            let resolvedCampaignIds = campaignId ? [campaignId] : [];
-            let dbCampaign = null;
-
-            if (dbCampaignId) {
-                dbCampaign = await Campaign.findById(dbCampaignId);
-                if (!dbCampaign) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
-                
-                // Use array of IDs if available, else fallback to single external ID
-                if (dbCampaign.campaignIds && dbCampaign.campaignIds.length > 0) {
-                    resolvedCampaignIds = dbCampaign.campaignIds;
-                } else if (dbCampaign.campaignId) {
-                    resolvedCampaignIds = [dbCampaign.campaignId];
-                }
-            }
-
-            if (resolvedCampaignIds.length === 0) {
-                return NextResponse.json({ error: 'Missing campaignId. Send campaign first, then fetch report.' }, { status: 400 });
-            }
-
-            const reportPolling = await fetchReportWithPolling(resolvedCampaignIds);
-            const report = reportPolling.report;
-
-            if (dbCampaign && report) {
-                dbCampaign.reportData = report.data || [];
-                await dbCampaign.save();
-            }
-
-            return NextResponse.json({ success: true, report, reportPolling, campaignIds: resolvedCampaignIds });
+            // Fetch performance report
+            const report = await fetchReport(campaignId);
+            return NextResponse.json({ success: true, report });
         }
 
         if (action === 'analyze') {
@@ -112,23 +73,11 @@ export async function POST(request) {
             const campaign = await Campaign.findById(body.dbCampaignId);
             if (!campaign) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
 
-            let resolvedCampaignIds = campaignId ? [campaignId] : [];
-            // Use array of IDs if available, else fallback to single external ID
-            if (campaign.campaignIds && campaign.campaignIds.length > 0) {
-                resolvedCampaignIds = campaign.campaignIds;
-            } else if (campaign.campaignId) {
-                resolvedCampaignIds = [campaign.campaignId];
-            }
-
-            if (resolvedCampaignIds.length === 0) {
-                return NextResponse.json({ error: 'No external campaign ID found. Send campaign before analysis.' }, { status: 400 });
-            }
-
             const logs = [];
             const onLog = (entry) => logs.push(entry);
 
             const result = await analysisAndOptimization(
-                resolvedCampaignIds,
+                campaignId,
                 campaign.brief,
                 campaign.strategy,
                 null, // Will re-fetch cohort inside

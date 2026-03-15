@@ -15,10 +15,6 @@ export default function CampaignDetail() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
-  const [refreshingReport, setRefreshingReport] = useState(false);
-  const [optimizing, setOptimizing] = useState(false);
-  const [approving, setApproving] = useState(false);
-  const [autoFetched, setAutoFetched] = useState(false);
 
   useEffect(() => {
     fetch(`/api/campaigns/${id}`)
@@ -31,31 +27,8 @@ export default function CampaignDetail() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  useEffect(() => {
-    // Auto-fetch report once if it's sent but doesn't have a report yet.
-    if (campaign && !campaign.reportData && ['sent', 'completed'].includes(campaign.status) && !autoFetched && !refreshingReport) {
-      setAutoFetched(true);
-      handleFetchLatestReport();
-    }
-  }, [campaign?.status, campaign?.reportData, autoFetched, refreshingReport]);
-
-  const handleApprove = async () => {
-    setApproving(true);
-    try {
-      const res = await fetch('/api/agent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'approve', campaignId: id }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setCampaign((prev) => ({ ...prev, status: 'sent', campaignId: data.externalCampaignIds?.[0] || data.campaignId || prev.campaignId }));
-      }
-    } catch { /* ignore */ }
-    setApproving(false);
-  };
-
   const handleAnalyze = async () => {
+    if (!campaign?.campaignId) return;
     setAnalyzing(true);
     try {
       const res = await fetch('/api/agent', {
@@ -65,68 +38,11 @@ export default function CampaignDetail() {
       });
       const data = await res.json();
       if (data.success) {
-        setCampaign((prev) => ({
-          ...prev,
-          campaignId: prev?.campaignId || data.campaignId,
-          metrics: data.analysis?.overallPerformance,
-          reportData: data.report?.data,
-          status: 'analyzed',
-          optimizationHistory: [...(prev?.optimizationHistory || []), data.optimization].filter(Boolean),
-        }));
+        setCampaign((prev) => ({ ...prev, metrics: data.analysis?.overallPerformance, reportData: data.report?.data, status: 'analyzed' }));
         if (data.logs) setLogs((prev) => [...prev, ...data.logs]);
       }
     } catch { /* ignore */ }
     setAnalyzing(false);
-  };
-
-  const handleFetchLatestReport = async () => {
-    setRefreshingReport(true);
-    try {
-      const res = await fetch('/api/agent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'report', dbCampaignId: id, campaignId: campaign?.campaignId }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setCampaign((prev) => ({ ...prev, reportData: data.report?.data || [], campaignId: prev?.campaignId || data.campaignId }));
-      }
-    } catch { /* ignore */ }
-    setRefreshingReport(false);
-  };
-
-  const toOptimizedVariants = (optimization) => {
-    const segs = optimization?.newSegments || [];
-    return segs
-      .filter((seg) => Array.isArray(seg.customerIds) && seg.customerIds.length > 0)
-      .map((seg, idx) => ({
-        variantName: seg.name || `Optimized Variant ${idx + 1}`,
-        targetSegment: seg.name || 'Optimized Segment',
-        subject: seg.newSubject || 'SuperBFSI - Updated Offer',
-        body: seg.newBody || 'Discover our updated offer tailored for you.',
-        sendTime: seg.recommendedSendTime || null,
-        customerIds: seg.customerIds,
-      }));
-  };
-
-  const handleOptimize = async () => {
-    const latestOptimization = campaign?.optimizationHistory?.[campaign.optimizationHistory.length - 1];
-    const optimizedVariants = toOptimizedVariants(latestOptimization);
-    if (optimizedVariants.length === 0) return;
-
-    setOptimizing(true);
-    try {
-      const res = await fetch('/api/agent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'optimize', dbCampaignId: id, optimizedVariants }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setCampaign((prev) => ({ ...prev, status: 'optimizing', iteration: (prev?.iteration || 1) + 1 }));
-      }
-    } catch { /* ignore */ }
-    setOptimizing(false);
   };
 
   if (loading) {
@@ -178,25 +94,10 @@ export default function CampaignDetail() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            {campaign.status === 'pending_approval' && (
-              <button className="btn btn-primary" onClick={handleApprove} disabled={approving}>
-                {approving ? '⏳ Launching...' : '🚀 Launch Campaign'}
-              </button>
-            )}
             {['sent', 'completed'].includes(campaign.status) && (
               <button className="btn btn-primary" onClick={handleAnalyze} disabled={analyzing}>
                 {analyzing ? '⏳ Analyzing...' : '📊 Analyze Performance'}
               </button>
-            )}
-            {['sent', 'analyzed', 'optimizing', 'completed'].includes(campaign.status) && campaign.reportData && (
-              <button className="btn btn-outline" onClick={handleFetchLatestReport} disabled={refreshingReport}>
-                {refreshingReport ? '⏳ Fetching report...' : '🔄 Fetch Latest Report'}
-              </button>
-            )}
-            {['sent', 'analyzed', 'optimizing', 'completed'].includes(campaign.status) && !campaign.reportData && (
-               <div style={{ display: 'flex', alignItems: 'center', fontSize: 13, color: 'var(--text-muted)' }}>
-                 {refreshingReport ? '⏳ Auto-fetching report...' : 'Waiting for report...'}
-               </div>
             )}
             <Link href="/campaigns/new" className="btn btn-outline">Duplicate</Link>
           </div>
@@ -231,9 +132,9 @@ export default function CampaignDetail() {
               <div className="stat-label">Click Rate</div>
             </div>
             <div className="stat-card">
-              <div className="stat-icon">⚖️</div>
-              <div className="stat-value">{campaign.metrics?.matrixScore != null ? campaign.metrics.matrixScore.toFixed(2) : '—'}</div>
-              <div className="stat-label">Matrix Score</div>
+              <div className="stat-icon">✉️</div>
+              <div className="stat-value">{campaign.contentVariants?.length || 0}</div>
+              <div className="stat-label">Variants</div>
             </div>
           </div>
 
@@ -269,23 +170,8 @@ export default function CampaignDetail() {
           <div className="card">
             <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Quick Actions</h3>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {campaign.status === 'pending_approval' && (
-                <button className="btn btn-primary btn-sm" onClick={handleApprove} disabled={approving}>
-                  {approving ? '⏳ Launching...' : '🚀 Launch Campaign'}
-                </button>
-              )}
               {['sent', 'completed'].includes(campaign.status) && (
                 <button className="btn btn-primary btn-sm" onClick={handleAnalyze} disabled={analyzing}>📊 Analyze</button>
-              )}
-              {['sent', 'analyzed', 'optimizing', 'completed'].includes(campaign.status) && campaign.reportData && (
-                <button className="btn btn-outline btn-sm" onClick={handleFetchLatestReport} disabled={refreshingReport}>
-                  {refreshingReport ? '⏳ Fetching...' : '🔄 Fetch Latest Report'}
-                </button>
-              )}
-              {(campaign.optimizationHistory?.length > 0) && (
-                <button className="btn btn-primary btn-sm" onClick={handleOptimize} disabled={optimizing}>
-                  {optimizing ? '⏳ Applying...' : '🚀 Apply AI Optimization'}
-                </button>
               )}
               <button className="btn btn-outline btn-sm" onClick={() => setTab('Variants')}>👁️ View Variants</button>
               <button className="btn btn-outline btn-sm" onClick={() => setTab('History')}>📜 View History</button>
@@ -317,15 +203,10 @@ export default function CampaignDetail() {
                   </div>
                 </div>
                 <div className="card glass">
-                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 8 }}>Matrix Score (70/30)</div>
-                  <div style={{ fontSize: 32, fontWeight: 800, color: campaign.metrics.matrixQualified ? 'var(--accent-green)' : 'var(--accent-yellow)' }}>
-                    {campaign.metrics.matrixScore != null ? campaign.metrics.matrixScore.toFixed(2) : '—'}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                    Threshold: {campaign.metrics.matrixThreshold ?? 8} · {campaign.metrics.matrixQualified ? 'Qualified' : 'Needs optimization'}
-                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 8 }}>Bounce Rate</div>
+                  <div style={{ fontSize: 32, fontWeight: 800, color: 'var(--accent-yellow)' }}>{campaign.metrics.bounceRate ?? '—'}%</div>
                   <div className="progress-bar" style={{ marginTop: 10 }}>
-                    <div className="progress-fill" style={{ width: `${Math.min((campaign.metrics.matrixScore || 0) * 10, 100)}%`, background: campaign.metrics.matrixQualified ? 'var(--accent-green)' : 'var(--accent-yellow)' }} />
+                    <div className="progress-fill" style={{ width: `${campaign.metrics.bounceRate || 0}%`, background: 'var(--accent-yellow)' }} />
                   </div>
                 </div>
               </div>

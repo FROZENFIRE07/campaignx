@@ -52,72 +52,6 @@ function detectFieldType(fieldName, values) {
     return 'categorical';
 }
 
-/**
- * Classify a field's SEMANTIC role dynamically — no hardcoded field names.
- * Uses the field's detected type and value distribution patterns.
- *
- * Returns: 'behavioral' | 'financial' | 'demographic' | 'general'
- *
- * Detection logic:
- *   - behavioral: categorical with ≤3 unique values that look like Y/N or boolean
- *                 (these represent user actions/states like app usage, activity flags)
- *   - financial:  numeric with wide range (max/min ratio > 5 or range > 10000)
- *                 OR numeric with max > 100 and high stddev
- *   - demographic: categorical with 3-30 unique values (e.g., gender, city, occupation)
- *                  OR small-range numeric (age-like: 0-120, family size: 0-10)
- *   - general:    everything else
- */
-function classifyFieldSemantic(fieldName, fieldDetail) {
-    // Identity fields have no semantic role for segmentation
-    if (IDENTITY_TYPES.has(fieldDetail.type)) return 'identity';
-
-    if (fieldDetail.type === 'categorical') {
-        const dist = fieldDetail.distribution;
-        const uniqueCount = dist?.uniqueCount || 0;
-        const values = dist?.values || {};
-        const keys = Object.keys(values).map(k => k.toUpperCase().trim());
-
-        // Boolean behavioral: ≤3 unique values that include Y/N, Yes/No, True/False, 1/0
-        if (uniqueCount <= 3) {
-            const boolPatterns = new Set(['Y', 'N', 'YES', 'NO', 'TRUE', 'FALSE', '1', '0']);
-            const matchCount = keys.filter(k => boolPatterns.has(k)).length;
-            if (matchCount >= 2 || (uniqueCount <= 2 && matchCount >= 1)) {
-                return 'behavioral';
-            }
-        }
-
-        // Demographic: moderate unique count (gender, city, occupation, marital status)
-        if (uniqueCount >= 2 && uniqueCount <= 30) {
-            return 'demographic';
-        }
-
-        return 'general';
-    }
-
-    if (fieldDetail.type === 'numeric') {
-        const s = fieldDetail.stats;
-        if (!s) return 'general';
-
-        const range = s.max - s.min;
-        const ratio = s.min > 0 ? s.max / s.min : range;
-
-        // Financial: wide numeric range (income, credit score, etc.)
-        // Heuristic: range > 10000 or (max > 100 and ratio > 5)
-        if (range > 10000 || (s.max > 100 && ratio > 5)) {
-            return 'financial';
-        }
-
-        // Demographic: small-range numeric (age: 0-120, family size: 0-10, kids: 0-5)
-        if (s.max <= 120 && range <= 120) {
-            return 'demographic';
-        }
-
-        return 'general';
-    }
-
-    return 'general';
-}
-
 /** Identity-type fields — should never be used in segmentation logic */
 const IDENTITY_TYPES = new Set(['id', 'name', 'email', 'phone']);
 
@@ -221,11 +155,6 @@ export function analyzeSchema(data) {
         fieldDetails[field] = detail;
     }
 
-    // Second pass: classify semantic roles (requires stats/distribution from first pass)
-    for (const [field, detail] of Object.entries(fieldDetails)) {
-        detail.semantic = classifyFieldSemantic(field, detail);
-    }
-
     return {
         totalRecords: data.length,
         fields: fieldNames,
@@ -243,8 +172,6 @@ export function formatSchemaForLLM(schema) {
     const lines = [`Dataset: ${schema.totalRecords} records, ${schema.fields.length} fields\n`];
 
     for (const [field, detail] of Object.entries(schema.fieldDetails)) {
-        const sem = detail.semantic ? `, ${detail.semantic}` : '';
-
         if (IDENTITY_TYPES.has(detail.type)) {
             lines.push(`• ${field} [${detail.type}, identifier]: ${detail.uniqueCount} unique values (excluded from segmentation)`);
             continue;
@@ -252,7 +179,7 @@ export function formatSchemaForLLM(schema) {
 
         if (detail.type === 'numeric') {
             const s = detail.stats;
-            lines.push(`• ${field} [numeric${sem}]: range ${s.min}–${s.max}, mean=${s.mean}, median=${s.median}, stddev=${s.stddev}, P25=${s.p25}, P75=${s.p75}`);
+            lines.push(`• ${field} [numeric]: range ${s.min}–${s.max}, mean=${s.mean}, median=${s.median}, stddev=${s.stddev}, P25=${s.p25}, P75=${s.p75}`);
             continue;
         }
 
@@ -260,58 +187,8 @@ export function formatSchemaForLLM(schema) {
         const dist = detail.distribution;
         const valEntries = Object.entries(dist.values || {});
         const distStr = valEntries.map(([k, v]) => `${k}(${v})`).join(', ');
-        lines.push(`• ${field} [categorical${sem}, ${dist.uniqueCount} unique]: ${distStr}`);
+        lines.push(`• ${field} [categorical, ${dist.uniqueCount} unique]: ${distStr}`);
         if (dist.note) lines.push(`  (${dist.note})`);
-    }
-
-    return lines.join('\n');
-}
-
-/**
- * Extract fields classified as behavioral signals from a schema.
- * Returns an array of { field, detail } objects.
- */
-export function detectBehavioralSignals(schema) {
-    if (!schema || !schema.fieldDetails) return [];
-    return Object.entries(schema.fieldDetails)
-        .filter(([, detail]) => detail.semantic === 'behavioral')
-        .map(([field, detail]) => ({ field, detail }));
-}
-
-/**
- * Build a concise hint block for the LLM highlighting behavioral and financial signals.
- * The LLM uses this to prioritize high-engagement fields in segmentation.
- * No field names are hardcoded — everything is derived from schema metadata.
- */
-export function formatBehavioralHints(schema) {
-    if (!schema || !schema.fieldDetails) return '';
-
-    const behavioral = [];
-    const financial = [];
-
-    for (const [field, detail] of Object.entries(schema.fieldDetails)) {
-        if (detail.semantic === 'behavioral') {
-            const dist = detail.distribution?.values || {};
-            const distStr = Object.entries(dist).map(([k, v]) => `${k}=${v}`).join(', ');
-            behavioral.push(`  • ${field}: ${distStr}`);
-        } else if (detail.semantic === 'financial') {
-            const s = detail.stats;
-            if (s) {
-                financial.push(`  • ${field}: range ${s.min}–${s.max}, mean=${s.mean}`);
-            }
-        }
-    }
-
-    if (behavioral.length === 0 && financial.length === 0) return '';
-
-    const lines = ['\n⚡ HIGH-ENGAGEMENT SIGNALS DETECTED (prioritize these for segmentation):'];
-    if (behavioral.length > 0) {
-        lines.push('Behavioral indicators (Y/N flags — users with positive values engage more):');
-        lines.push(...behavioral);
-    }
-    if (financial.length > 0) {
-        lines.push('Financial indicators (high-value numeric — correlate with investment behavior):');
-        lines.push(...financial);
     }
 
     return lines.join('\n');

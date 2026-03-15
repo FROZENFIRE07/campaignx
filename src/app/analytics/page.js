@@ -1,36 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import StatsCard from '../components/StatsCard';
+import { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
 
-const HEATMAP_DATA = {
-  hours: ['6AM', '9AM', '12PM', '3PM', '6PM', '9PM'],
-  days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-  values: [
-    [0.2, 0.5, 0.8, 0.6, 0.7, 0.3, 0.1],
-    [0.4, 0.9, 0.7, 0.8, 0.5, 0.2, 0.1],
-    [0.3, 0.7, 0.9, 0.95, 0.8, 0.4, 0.2],
-    [0.2, 0.6, 0.8, 0.9, 0.7, 0.3, 0.1],
-    [0.1, 0.4, 0.5, 0.6, 0.9, 0.5, 0.2],
-    [0.05, 0.2, 0.3, 0.4, 0.5, 0.3, 0.1],
-  ],
-};
-
-const REGIONS = [
-  { name: 'North America', pct: 42, color: 'var(--accent-primary)' },
-  { name: 'Europe', pct: 28, color: 'rgba(163,230,53,0.6)' },
-  { name: 'Asia Pacific', pct: 18, color: 'rgba(163,230,53,0.4)' },
-  { name: 'Latin America', pct: 8, color: 'rgba(163,230,53,0.25)' },
-  { name: 'Others', pct: 4, color: 'rgba(163,230,53,0.15)' },
-];
-
-const INSIGHTS = [
-  { icon: 'trending_up', title: 'Engagement spike detected on Tuesdays between 10-11 AM EST', bg: 'rgba(16,185,129,0.15)', color: 'var(--accent-green)' },
-  { icon: 'psychology', title: 'Subject lines with questions have 23% higher open rates', bg: 'rgba(163,230,53,0.15)', color: 'var(--accent-primary)' },
-  { icon: 'warning', title: 'Click-through rate declining in "SMB" segment — consider A/B test', bg: 'rgba(245,158,11,0.15)', color: 'var(--accent-amber)' },
-];
+const TABS = ['Overview', 'Performance', 'A/B Tests', 'Cohort Insights'];
+const colors = ['#8b5cf6', '#3b82f6', '#06b6d4', '#ec4899', '#f59e0b', '#10b981', '#ef4444'];
 
 export default function Analytics() {
+  const [tab, setTab] = useState('Overview');
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -38,214 +15,392 @@ export default function Analytics() {
     fetch('/api/agent')
       .then((r) => r.json())
       .then((d) => setCampaigns(d.campaigns || []))
-      .catch(() => { })
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
-  const totalReach = campaigns.reduce(
-    (sum, campaign) =>
-      sum +
-      (campaign.contentVariants?.reduce(
-        (s, variant) => s + (variant.customerIds?.length || 0),
-        0
-      ) || 0),
-    0
-  );
-  const avgEngagement = campaigns.length > 0
-    ? (campaigns.reduce((s, c) => s + (c.metrics?.openRate || 0), 0) / campaigns.length).toFixed(1)
-    : '24.8';
-  const totalConversions = campaigns.filter(c => c.status === 'analyzed').length * 127 || 847;
-  const totalSpend = campaigns.length > 0 ? `$${(campaigns.length * 1240).toLocaleString()}` : '$3,240';
+  const metrics = useMemo(() => {
+    const total = campaigns.length;
+    const sent = campaigns.filter((c) => ['sent', 'analyzed', 'completed', 'optimizing'].includes(c.status));
+    const withMetrics = campaigns.filter((c) => c.metrics?.openRate != null);
+    const avgOpen = withMetrics.length > 0 ? (withMetrics.reduce((s, c) => s + (c.metrics?.openRate || 0), 0) / withMetrics.length).toFixed(1) : 0;
+    const avgClick = withMetrics.length > 0 ? (withMetrics.reduce((s, c) => s + (c.metrics?.clickRate || 0), 0) / withMetrics.length).toFixed(1) : 0;
+    let totalRecipients = 0;
+    campaigns.forEach((c) => (c.contentVariants || []).forEach((v) => { totalRecipients += v.customerIds?.length || 0; }));
+    const totalVariants = campaigns.reduce((s, c) => s + (c.contentVariants?.length || 0), 0);
+    const totalSegments = campaigns.reduce((s, c) => s + (c.strategy?.segments?.length || 0), 0);
+    const optimizations = campaigns.reduce((s, c) => s + (c.optimizationHistory?.length || 0), 0);
+    return { total, sent: sent.length, avgOpen, avgClick, totalRecipients, totalVariants, totalSegments, optimizations, withMetrics };
+  }, [campaigns]);
 
-  // Generate SVG chart path from campaign data
-  const chartPoints = [20, 35, 28, 42, 38, 55, 48, 62, 58, 72, 65, 78];
-  const chartWidth = 100;
-  const chartHeight = 80;
-  const svgPath = chartPoints.map((p, i) => {
-    const x = (i / (chartPoints.length - 1)) * chartWidth;
-    const y = chartHeight - (p / 100) * chartHeight;
-    return `${i === 0 ? 'M' : 'L'}${x},${y}`;
-  }).join(' ');
-  const areaPath = `${svgPath} L${chartWidth},${chartHeight} L0,${chartHeight} Z`;
+  // Sort campaigns by metrics for leaderboard
+  const leaderboard = useMemo(() => {
+    return [...campaigns]
+      .filter((c) => c.metrics?.openRate != null)
+      .sort((a, b) => (b.metrics?.openRate || 0) - (a.metrics?.openRate || 0));
+  }, [campaigns]);
+
+  // A/B test insights from variants
+  const abTests = useMemo(() => {
+    return campaigns
+      .filter((c) => (c.contentVariants?.length || 0) > 1)
+      .map((c) => ({
+        campaign: c,
+        variants: c.contentVariants || [],
+        hasMetrics: c.metrics?.openRate != null,
+      }));
+  }, [campaigns]);
+
+  // Segment cross-campaign performance
+  const segmentPerf = useMemo(() => {
+    const segs = {};
+    campaigns.forEach((c) => {
+      (c.strategy?.segments || []).forEach((seg) => {
+        if (!segs[seg.name]) segs[seg.name] = { count: 0, campaigns: 0, customers: 0 };
+        segs[seg.name].count++;
+        segs[seg.name].campaigns++;
+        segs[seg.name].customers += seg.count || seg.customerIds?.length || 0;
+      });
+    });
+    return Object.entries(segs).sort((a, b) => b[1].campaigns - a[1].campaigns);
+  }, [campaigns]);
 
   if (loading) {
     return (
-      <div className="loading-state" style={{ minHeight: 400 }}>
-        <div className="spinner spinner-lg" />
-        <p>Loading analytics data...</p>
-      </div>
+      <>
+        <div className="g4" style={{ marginBottom: 24 }}>
+          {[1, 2, 3, 4].map((i) => <div key={i} className="stat-card"><div className="skeleton skeleton-text" style={{ width: '50%', height: 30 }} /></div>)}
+        </div>
+        <div className="card"><div className="skeleton skeleton-text" style={{ width: '100%', height: 300 }} /></div>
+      </>
     );
   }
 
   return (
     <>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px',
-            borderRadius: 999, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 2,
-            background: 'rgba(16,185,129,0.2)', color: 'var(--accent-green)',
-          }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-green)', display: 'inline-block', animation: 'livePulse 1.5s infinite' }} />
-            Live Analytics
-          </span>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-ghost btn-sm">
-            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>calendar_today</span>
-            Last 30 Days
-          </button>
-          <button className="btn btn-primary btn-sm">
-            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>download</span>
-            Export
-          </button>
-        </div>
+      {/* Tabs */}
+      <div className="tabs tabs-underline" style={{ marginBottom: 24 }}>
+        {TABS.map((t) => (
+          <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>{t}</button>
+        ))}
       </div>
 
-      {/* Stat Cards */}
-      <div className="stats-grid" style={{ marginBottom: 32 }}>
-        <StatsCard materialIcon="campaign" value={totalReach.toLocaleString()} label="Total Reach" trend="+12.5% vs last month" trendDir="up" bgColor="rgba(163,230,53,0.1)" />
-        <StatsCard materialIcon="touch_app" value={`${avgEngagement}%`} label="Engagement Rate" trend="+3.2% vs last month" trendDir="up" bgColor="rgba(163,230,53,0.1)" />
-        <StatsCard materialIcon="payments" value={totalConversions.toLocaleString()} label="Conversions" trend="+8.1% vs last month" trendDir="up" bgColor="rgba(163,230,53,0.1)" />
-        <StatsCard materialIcon="account_balance_wallet" value={totalSpend} label="Total Spend" trend="-5.2% efficiency gain" trendDir="down" bgColor="rgba(163,230,53,0.1)" />
-      </div>
-
-      {/* Chart + Heatmap */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 32 }}>
-        {/* SVG Line Chart */}
-        <div className="glass" style={{ padding: 24 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-            <h3 style={{ fontWeight: 700 }}>Engagement Over Time</h3>
-            <div className="chart-legend">
-              <div className="chart-legend-item" style={{ background: 'rgba(163,230,53,0.1)', color: 'var(--accent-primary)' }}>
-                <span className="chart-legend-dot" style={{ background: 'var(--accent-primary)' }} />
-                Open Rate
-              </div>
-              <div className="chart-legend-item" style={{ background: 'rgba(16,185,129,0.1)', color: 'var(--accent-green)' }}>
-                <span className="chart-legend-dot" style={{ background: 'var(--accent-green)' }} />
-                Click Rate
-              </div>
+      {/* ─── Overview ─── */}
+      {tab === 'Overview' && (
+        <>
+          <div className="g4" style={{ marginBottom: 24 }}>
+            <div className="stat-card">
+              <div className="stat-icon">📧</div>
+              <div className="stat-value">{metrics.total}</div>
+              <div className="stat-label">Total Campaigns</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon">👥</div>
+              <div className="stat-value">{metrics.totalRecipients.toLocaleString()}</div>
+              <div className="stat-label">Recipients Reached</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon">📬</div>
+              <div className="stat-value">{metrics.avgOpen}%</div>
+              <div className="stat-label">Avg Open Rate</div>
+              {Number(metrics.avgOpen) > 0 && <div className={`stat-trend ${Number(metrics.avgOpen) > 20 ? 'up' : 'down'}`}>{Number(metrics.avgOpen) > 20 ? '↑' : '↓'} vs baseline</div>}
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon">🖱️</div>
+              <div className="stat-value">{metrics.avgClick}%</div>
+              <div className="stat-label">Avg Click Rate</div>
+              {Number(metrics.avgClick) > 0 && <div className={`stat-trend ${Number(metrics.avgClick) > 5 ? 'up' : 'down'}`}>{Number(metrics.avgClick) > 5 ? '↑' : '↓'} vs baseline</div>}
             </div>
           </div>
-          <div style={{ position: 'relative', height: 250 }}>
-            <svg viewBox={`0 0 ${chartWidth} ${chartHeight + 10}`} style={{ width: '100%', height: '100%' }} preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="rgba(163,230,53,0.3)" />
-                  <stop offset="100%" stopColor="rgba(163,230,53,0)" />
-                </linearGradient>
-              </defs>
-              <path d={areaPath} fill="url(#chartGradient)" />
-              <path d={svgPath} stroke="var(--accent-primary)" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-              {/* Click rate line - slightly lower */}
-              <path d={chartPoints.map((p, i) => {
-                const x = (i / (chartPoints.length - 1)) * chartWidth;
-                const y = chartHeight - ((p * 0.45) / 100) * chartHeight;
-                return `${i === 0 ? 'M' : 'L'}${x},${y}`;
-              }).join(' ')} stroke="var(--accent-green)" strokeWidth="1" fill="none" strokeDasharray="4 2" strokeLinecap="round" />
-            </svg>
-            <div className="analytics-axis">
-              {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((m) => (
-                <span key={m}>{m}</span>
+
+          {/* Secondary metrics */}
+          <div className="g4" style={{ marginBottom: 24 }}>
+            <div className="mtile"><div className="mtile-val">{metrics.sent}</div><div className="mtile-label">Sent Campaigns</div></div>
+            <div className="mtile"><div className="mtile-val">{metrics.totalVariants}</div><div className="mtile-label">Email Variants</div></div>
+            <div className="mtile"><div className="mtile-val">{metrics.totalSegments}</div><div className="mtile-label">Segments</div></div>
+            <div className="mtile"><div className="mtile-val">{metrics.optimizations}</div><div className="mtile-label">Optimizations</div></div>
+          </div>
+
+          {/* Campaign Performance Leaderboard */}
+          <div className="card" style={{ marginBottom: 20 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>🏆 Campaign Performance Leaderboard</h3>
+            {leaderboard.length > 0 ? (
+              <div className="table-container">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Campaign</th>
+                      <th>Open Rate</th>
+                      <th>Click Rate</th>
+                      <th>Recipients</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {leaderboard.slice(0, 10).map((c, i) => (
+                      <tr key={c._id}>
+                        <td style={{ fontWeight: 700, color: i < 3 ? 'var(--accent-yellow)' : 'var(--text-muted)' }}>{i + 1}</td>
+                        <td>
+                          <Link href={`/campaigns/${c._id}`} style={{ color: 'var(--accent)', textDecoration: 'none', fontSize: 12 }}>
+                            {c.brief?.substring(0, 50) || 'Untitled'}
+                          </Link>
+                        </td>
+                        <td>
+                          <span style={{ fontWeight: 700, color: 'var(--accent-green)' }}>{c.metrics?.openRate}%</span>
+                        </td>
+                        <td>
+                          <span style={{ fontWeight: 700, color: 'var(--accent-blue)' }}>{c.metrics?.clickRate}%</span>
+                        </td>
+                        <td>{c.contentVariants?.reduce((s, v) => s + (v.customerIds?.length || 0), 0) || 0}</td>
+                        <td><span className={`status-badge ${c.status === 'analyzed' ? 'info' : 'success'}`}>{c.status}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>No analyzed campaigns yet. Analyze a sent campaign to see results.</p>
+            )}
+          </div>
+
+          {/* Segment Performance Comparison */}
+          <div className="card">
+            <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Segment Performance Comparison</h3>
+            {segmentPerf.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {segmentPerf.slice(0, 10).map(([name, data], i) => (
+                  <div key={name}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{name}</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{data.customers} customers · {data.campaigns} campaigns</span>
+                    </div>
+                    <div className="progress-bar">
+                      <div className="progress-fill" style={{ width: `${Math.min(100, (data.customers / (segmentPerf[0]?.[1]?.customers || 1)) * 100)}%`, background: colors[i % colors.length] }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>No segment data available.</p>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ─── Performance ─── */}
+      {tab === 'Performance' && (
+        <>
+          {metrics.withMetrics.length > 0 ? (
+            <>
+              <div className="g2" style={{ marginBottom: 24 }}>
+                {/* Open Rate Bar Chart */}
+                <div className="card">
+                  <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Open Rates by Campaign</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {metrics.withMetrics.slice(0, 8).map((c, i) => (
+                      <div key={c._id}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {c.brief?.substring(0, 30) || 'Campaign'}
+                          </span>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-green)' }}>{c.metrics.openRate}%</span>
+                        </div>
+                        <div className="progress-bar">
+                          <div className="progress-fill" style={{ width: `${c.metrics.openRate}%`, background: colors[i % colors.length] }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Click Rate Bar Chart */}
+                <div className="card">
+                  <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Click Rates by Campaign</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {metrics.withMetrics.slice(0, 8).map((c, i) => (
+                      <div key={c._id}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {c.brief?.substring(0, 30) || 'Campaign'}
+                          </span>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-blue)' }}>{c.metrics.clickRate}%</span>
+                        </div>
+                        <div className="progress-bar">
+                          <div className="progress-fill" style={{ width: `${c.metrics.clickRate}%`, background: colors[i % colors.length] }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Engagement Funnel */}
+              <div className="card">
+                <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>📈 Engagement Funnel (Aggregated)</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 500 }}>
+                  {[
+                    { label: 'Total Sent', val: metrics.totalRecipients, pct: 100, color: '#8b5cf6' },
+                    { label: 'Estimated Delivered', val: Math.round(metrics.totalRecipients * 0.95), pct: 95, color: '#3b82f6' },
+                    { label: 'Estimated Opened', val: Math.round(metrics.totalRecipients * (Number(metrics.avgOpen) / 100)), pct: Number(metrics.avgOpen), color: '#10b981' },
+                    { label: 'Estimated Clicked', val: Math.round(metrics.totalRecipients * (Number(metrics.avgClick) / 100)), pct: Number(metrics.avgClick), color: '#f59e0b' },
+                  ].map((step, i) => (
+                    <div key={i}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{step.label}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: step.color }}>{step.val.toLocaleString()} ({step.pct}%)</span>
+                      </div>
+                      <div className="progress-bar" style={{ height: 10 }}>
+                        <div className="progress-fill" style={{ width: `${step.pct}%`, background: step.color }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="empty-state">
+              <div className="empty-icon">📊</div>
+              <h3 className="empty-title">No performance data</h3>
+              <p className="empty-desc">Analyze sent campaigns to see performance breakdowns.</p>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ─── A/B Tests ─── */}
+      {tab === 'A/B Tests' && (
+        <>
+          {abTests.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {abTests.map(({ campaign: c, variants }, ti) => (
+                <div key={c._id} className="card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                    <div>
+                      <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
+                        {c.brief?.substring(0, 80) || 'Untitled Campaign'}
+                      </h4>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        {variants.length} variants · {c.contentVariants?.reduce((s, v) => s + (v.customerIds?.length || 0), 0)} recipients
+                      </span>
+                    </div>
+                    <span className={`status-badge ${c.metrics ? 'info' : 'draft'}`}>{c.metrics ? 'Analyzed' : 'Pending'}</span>
+                  </div>
+
+                  <div className="g2">
+                    {variants.map((v, i) => (
+                      <div key={i} style={{ padding: 12, background: 'var(--bg-primary)', borderRadius: 8, border: '1px solid var(--border-subtle)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: colors[i % colors.length] }}>
+                            {v.variantName} ({v.targetSegment})
+                          </span>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{v.customerIds?.length || 0} recipients</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>
+                          <strong>Subject:</strong> {v.subject}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', maxHeight: 40, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {v.body?.substring(0, 100)}...
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+                    <Link href={`/campaigns/${c._id}?tab=Variants`} className="btn btn-sm btn-outline">View Variants</Link>
+                    <Link href={`/campaigns/${c._id}?tab=Analytics`} className="btn btn-sm btn-ghost">📊 Full Analytics</Link>
+                  </div>
+                </div>
               ))}
             </div>
-          </div>
-        </div>
+          ) : (
+            <div className="empty-state">
+              <div className="empty-icon">🔬</div>
+              <h3 className="empty-title">No A/B tests</h3>
+              <p className="empty-desc">Campaigns with multiple variants will appear here for comparison.</p>
+            </div>
+          )}
+        </>
+      )}
 
-        {/* Heatmap */}
-        <div className="glass" style={{ padding: 24 }}>
-          <h3 style={{ fontWeight: 700, marginBottom: 24 }}>Best Send Times</h3>
-          <div className="heatmap-grid">
-            {/* Header row */}
-            <div className="heatmap-label" />
-            {HEATMAP_DATA.days.map((d) => <div className="heatmap-label" key={d}>{d}</div>)}
-            {/* Data rows */}
-            {HEATMAP_DATA.hours.map((h, hi) => (
-              <React.Fragment key={`row-${h}`}>
-                <div className="heatmap-label">{h}</div>
-                {HEATMAP_DATA.days.map((d, di) => {
-                  const val = HEATMAP_DATA.values[hi][di];
-                  const alpha = Math.max(0.05, val);
-                  return (
-                    <div
-                      className="heatmap-cell"
-                      key={`${h}-${d}`}
-                      style={{ background: `rgba(163, 230, 53, ${alpha})` }}
-                      title={`${d} ${h}: ${Math.round(val * 100)}% engagement`}
-                    />
-                  );
-                })}
-              </React.Fragment>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* 3-Column Bottom: Channels, Regions, AI Insights */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
-        {/* Channel Distribution */}
-        <div className="glass" style={{ padding: 24 }}>
-          <h4 style={{ fontWeight: 700, marginBottom: 20 }}>Channel Distribution</h4>
-          <div>
-            {[
-              { name: 'Email', pct: 45, color: 'var(--accent-primary)' },
-              { name: 'LinkedIn', pct: 25, color: 'rgba(163,230,53,0.6)' },
-              { name: 'WhatsApp', pct: 18, color: 'var(--accent-green)' },
-              { name: 'SMS', pct: 12, color: 'var(--accent-amber)' },
-            ].map((ch) => (
-              <div className="dist-item" key={ch.name}>
-                <div className="dist-header">
-                  <span style={{ color: 'var(--text-secondary)' }}>{ch.name}</span>
-                  <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{ch.pct}%</span>
-                </div>
-                <div className="dist-track">
-                  <div className="dist-fill" style={{ width: `${ch.pct}%`, background: ch.color }} />
+      {/* ─── Cohort Insights ─── */}
+      {tab === 'Cohort Insights' && (
+        <>
+          {segmentPerf.length > 0 ? (
+            <>
+              {/* Segment performance matrix */}
+              <div className="card" style={{ marginBottom: 20 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Segment Utilization Matrix</h3>
+                <div className="table-container">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Segment</th>
+                        <th>Campaigns</th>
+                        <th>Customers</th>
+                        <th>Usage</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {segmentPerf.map(([name, data], i) => (
+                        <tr key={name}>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <div style={{ width: 8, height: 8, borderRadius: '50%', background: colors[i % colors.length] }} />
+                              <span style={{ fontSize: 12 }}>{name}</span>
+                            </div>
+                          </td>
+                          <td>{data.campaigns}</td>
+                          <td>{data.customers.toLocaleString()}</td>
+                          <td>
+                            <div className="progress-bar" style={{ width: 100 }}>
+                              <div className="progress-fill" style={{ width: `${(data.campaigns / metrics.total) * 100}%`, background: colors[i % colors.length] }} />
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
 
-        {/* Top Audience Regions */}
-        <div className="glass" style={{ padding: 24 }}>
-          <h4 style={{ fontWeight: 700, marginBottom: 20 }}>Top Audience Regions</h4>
-          <div>
-            {REGIONS.map((r) => (
-              <div className="dist-item" key={r.name}>
-                <div className="dist-header">
-                  <span style={{ color: 'var(--text-secondary)' }}>{r.name}</span>
-                  <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{r.pct}%</span>
-                </div>
-                <div className="dist-track">
-                  <div className="dist-fill" style={{ width: `${r.pct}%`, background: r.color }} />
+              {/* AI Recommendations */}
+              <div className="card">
+                <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>💡 AI Recommendations</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {segmentPerf.slice(0, 3).map(([name, data], i) => (
+                    <div key={name} style={{ padding: 12, background: 'var(--bg-primary)', borderRadius: 8, borderLeft: `3px solid ${colors[i]}` }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
+                        Target "{name}" segment more frequently
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                        This segment has {data.customers} customers and has been used in {data.campaigns} campaigns.
+                        Consider creating more targeted content for higher engagement.
+                      </div>
+                    </div>
+                  ))}
+                  {metrics.optimizations > 0 && (
+                    <div style={{ padding: 12, background: 'var(--bg-primary)', borderRadius: 8, borderLeft: '3px solid var(--accent-green)' }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
+                        Continue optimization cycles
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                        {metrics.optimizations} optimization(s) have been run. Each cycle improves targeting accuracy by learning from performance data.
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-
-        {/* AI Insights */}
-        <div className="glass" style={{ padding: 24 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
-            <span className="material-symbols-outlined" style={{ color: 'var(--accent-primary)', fontSize: 20 }}>auto_awesome</span>
-            <h4 style={{ fontWeight: 700 }}>AI Insights</h4>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {INSIGHTS.map((insight, i) => (
-              <div className="insight-item" key={i}>
-                <div className="insight-icon" style={{ background: insight.bg }}>
-                  <span className="material-symbols-outlined" style={{ color: insight.color }}>{insight.icon}</span>
-                </div>
-                <div>
-                  <div className="insight-title">{insight.title}</div>
-                  <div className="insight-desc">Click to explore →</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+            </>
+          ) : (
+            <div className="empty-state">
+              <div className="empty-icon">🧬</div>
+              <h3 className="empty-title">No cohort insights</h3>
+              <p className="empty-desc">Create campaigns with customer segments to generate cohort insights.</p>
+            </div>
+          )}
+        </>
+      )}
     </>
   );
 }

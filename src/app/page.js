@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -13,7 +13,7 @@ export default function Dashboard() {
     fetch('/api/agent')
       .then((r) => r.json())
       .then((d) => setCampaigns(d.campaigns || []))
-      .catch(() => { })
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
@@ -45,236 +45,116 @@ export default function Dashboard() {
 
   return (
     <>
-      {/* Stats Grid */}
-      <div className="stats-grid" style={{ marginBottom: 32 }}>
-        <StatsCard
-          materialIcon="mail"
-          value={avgOpenRate !== '--' ? `${avgOpenRate}%` : '--'}
-          label="Open Rate"
-          trend={avgOpenRate !== '--' ? '+2.1% from last week' : null}
-          trendDir="up"
-          bgColor="rgba(163, 230, 53, 0.1)"
-        />
-        <StatsCard
-          materialIcon="ads_click"
-          value={avgClickRate !== '--' ? `${avgClickRate}%` : '--'}
-          label="CTR"
-          trend={avgClickRate !== '--' ? 'vs last week' : null}
-          trendDir={Number(avgClickRate) > 5 ? 'up' : 'down'}
-          bgColor="rgba(163, 230, 53, 0.1)"
-        />
-        <StatsCard
-          materialIcon="smart_toy"
-          value={activeCampaigns.length || '0'}
-          label="Active Agents"
-          trend={`${campaigns.length} total campaigns`}
-          trendDir="up"
-          bgColor="rgba(163, 230, 53, 0.1)"
-        />
-        <StatsCard
-          materialIcon="score"
-          value={campaigns.length > 0 && campaigns.some(c => c.metrics?.matrixScore !== undefined)
-            ? (campaigns.reduce((s, c) => s + (c.metrics?.matrixScore || 0), 0) / campaigns.filter(c => c.metrics?.matrixScore !== undefined).length || 1).toFixed(1)
-            : '--'}
-          label="Matrix Score"
-          trend={campaigns.length > 0 ? 'avg across campaigns' : null}
-          trendDir="up"
-          bgColor="rgba(163, 230, 53, 0.1)"
-        />
+      <div className="hero">
+        <div className="hero-title">{`Welcome back, SuperBFSI \u{1F44B}`}</div>
+        <div className="hero-subtitle">
+          AI-powered campaign management at your fingertips. Create, analyze, and optimize marketing campaigns with multi-agent intelligence.
+        </div>
+        <div className="hero-actions">
+          <Link href="/campaigns/new" className="btn btn-primary btn-lg">{`\u{2728}`} Create New Campaign</Link>
+          <Link href="/campaigns" className="btn btn-outline">View All Campaigns</Link>
+        </div>
       </div>
 
-      {/* Main Content: Activity Feed + Side Panel */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 32 }}>
-        {/* Activity Feed (2/3 width) */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          {/* Live Agent Activity */}
-          <div className="glass glow-border" style={{ overflow: 'hidden' }}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.15)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span className="material-symbols-outlined" style={{ color: 'var(--accent-primary)' }}>sensors</span>
-                <h3 style={{ fontWeight: 700, fontSize: 18 }}>Live Agent Activity</h3>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent-green)', display: 'inline-block', animation: 'livePulse 2s infinite' }} />
-                <span style={{ fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: 1.5, color: 'var(--text-muted)' }}>Real-time Stream</span>
-              </div>
-            </div>
-            <div style={{ padding: 24 }}>
-              <div className="activity-feed">
-                {/* Activity Item 1 */}
-                <div className="activity-item">
-                  <div className="activity-line-wrap">
-                    <div className="activity-dot activity-dot-primary">
-                      <span className="material-symbols-outlined">robot_2</span>
-                    </div>
-                    <div className="activity-connector" />
-                  </div>
-                  <div className="activity-content">
-                    <div className="activity-header">
-                      <h4 className="activity-agent">Agent Alpha</h4>
-                      <span className="activity-time">2 mins ago</span>
-                    </div>
-                    <p className="activity-message">
-                      Successfully initiated outreach to <span className="highlight">124 leads</span> in the &quot;SaaS Q4&quot; campaign. Personalized messaging based on LinkedIn profiles.
-                    </p>
-                  </div>
-                </div>
+      <div className="stats-grid">
+        <StatsCard icon={"\u{1F4E8}"} value={campaigns.length} label="Total Campaigns" bgColor="rgba(99,102,241,0.1)" />
+        <StatsCard icon={"\u{1F7E2}"} value={activeCampaigns.length} label="Active Campaigns" bgColor="rgba(16,185,129,0.1)" />
+        <StatsCard icon={"\u{1F4EC}"} value={avgOpenRate !== '--' ? `${avgOpenRate}%` : '--'} label="Avg Open Rate" bgColor="rgba(139,92,246,0.1)" />
+        <StatsCard icon={"\u{1F5B1}"} value={avgClickRate !== '--' ? `${avgClickRate}%` : '--'} label="Avg Click Rate" bgColor="rgba(59,130,246,0.1)" />
+      </div>
 
-                {/* Activity Item 2 */}
-                <div className="activity-item">
-                  <div className="activity-line-wrap">
-                    <div className="activity-dot activity-dot-success">
-                      <span className="material-symbols-outlined">check_circle</span>
-                    </div>
-                    <div className="activity-connector" />
-                  </div>
-                  <div className="activity-content">
-                    <div className="activity-header">
-                      <h4 className="activity-agent">Agent Beta</h4>
-                      <span className="activity-time">5 mins ago</span>
-                    </div>
-                    <p className="activity-message">
-                      Resolved support query for lead <em>&quot;David Chen&quot;</em> regarding API integration. High sentiment score (0.92) detected.
-                    </p>
-                  </div>
-                </div>
+      <div className="card">
+        <div className="section-header">
+          <h2>Recent Campaigns</h2>
+          <Link href="/campaigns" className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }}>{"View All \u{2192}"}</Link>
+        </div>
 
-                {/* Activity Item 3 */}
-                <div className="activity-item">
-                  <div className="activity-line-wrap">
-                    <div className="activity-dot activity-dot-primary">
-                      <span className="material-symbols-outlined">calendar_today</span>
-                    </div>
-                    <div className="activity-connector" />
-                  </div>
-                  <div className="activity-content">
-                    <div className="activity-header">
-                      <h4 className="activity-agent">Agent Gamma</h4>
-                      <span className="activity-time">12 mins ago</span>
-                    </div>
-                    <p className="activity-message">
-                      Scheduled meeting with <span className="highlight">TechNova Global</span> for Tuesday, Oct 24th at 2:00 PM PST. Syncing to main calendar.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Activity Item 4 */}
-                <div className="activity-item">
-                  <div className="activity-line-wrap">
-                    <div className="activity-dot activity-dot-neutral">
-                      <span className="material-symbols-outlined">person_add</span>
-                    </div>
-                  </div>
-                  <div className="activity-content">
-                    <div className="activity-header">
-                      <h4 className="activity-agent">Agent Delta</h4>
-                      <span className="activity-time">15 mins ago</span>
-                    </div>
-                    <p className="activity-message">
-                      New lead &quot;Sarah Jenkins&quot; processed and qualified. Assigned to <strong style={{ color: 'var(--text-secondary)' }}>Enterprise Pipeline</strong>.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
+        {loading ? (
+          <div className="loading-state"><div className="spinner spinner-lg" /><p>Loading campaigns...</p></div>
+        ) : campaigns.length === 0 ? (
+          <EmptyState
+            icon={"\u{1F680}"} title="No campaigns created yet"
+            description="Start your first AI-powered campaign in minutes"
+            action={<Link href="/campaigns/new" className="btn btn-primary">Create First Campaign</Link>}
+          />
+        ) : (
+          <div className="table-container">
+            <table className="table">
+              <thead>
+                <tr><th>Campaign</th><th>Status</th><th>Created</th><th>Open Rate</th><th>Click Rate</th><th>Actions</th></tr>
+              </thead>
+              <tbody>
+                {campaigns.slice(0, 10).map((c) => (
+                  <tr key={c._id}>
+                    <td>
+                      <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2 }}>
+                        {c.brief?.substring(0, 60) || 'Untitled'}{c.brief?.length > 60 ? '...' : ''}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Iteration {c.iteration || 1}</div>
+                    </td>
+                    <td><span className={`badge ${statusClass(c.status)}`}>{statusLabel(c.status)}</span></td>
+                    <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{new Date(c.createdAt).toLocaleDateString()}</td>
+                    <td><span style={{ fontWeight: 700, color: c.metrics?.openRate ? 'var(--accent)' : 'var(--text-muted)' }}>{c.metrics?.openRate ? `${c.metrics.openRate}%` : '--'}</span></td>
+                    <td><span style={{ fontWeight: 700, color: c.metrics?.clickRate ? 'var(--accent-green)' : 'var(--text-muted)' }}>{c.metrics?.clickRate ? `${c.metrics.clickRate}%` : '--'}</span></td>
+                    <td><Link href={`/campaigns/${c._id}`} className="btn btn-ghost btn-sm">View</Link></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
+        )}
+      </div>
 
-          {/* Recent Campaigns Table */}
-          {!loading && campaigns.length > 0 && (
-            <div className="glass" style={{ overflow: 'hidden' }}>
-              <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.15)' }}>
-                <h3 style={{ fontWeight: 700, fontSize: 16 }}>Recent Campaigns</h3>
-                <Link href="/campaigns" className="btn btn-ghost btn-sm">View All →</Link>
-              </div>
-              <div className="table-container" style={{ border: 'none' }}>
-                <table className="table">
-                  <thead>
-                    <tr><th>Campaign</th><th>Status</th><th>Open Rate</th><th>Click Rate</th><th>Actions</th></tr>
-                  </thead>
-                  <tbody>
-                    {campaigns.slice(0, 5).map((c) => (
-                      <tr key={c._id}>
-                        <td>
-                          <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2 }}>
-                            {c.brief?.substring(0, 50) || 'Untitled'}{c.brief?.length > 50 ? '...' : ''}
-                          </div>
-                        </td>
-                        <td><span className={`badge ${statusClass(c.status)}`}>{statusLabel(c.status)}</span></td>
-                        <td><span style={{ fontWeight: 700, color: c.metrics?.openRate ? 'var(--accent-green)' : 'var(--text-muted)' }}>{c.metrics?.openRate ? `${c.metrics.openRate}%` : '--'}</span></td>
-                        <td><span style={{ fontWeight: 700, color: c.metrics?.clickRate ? 'var(--accent-primary)' : 'var(--text-muted)' }}>{c.metrics?.clickRate ? `${c.metrics.clickRate}%` : '--'}</span></td>
-                        <td><Link href={`/campaigns/${c._id}`} className="btn btn-ghost btn-sm">View</Link></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+      <div className="g2">
+        <div className="card">
+          <div className="section-header"><h2>Performance Overview</h2></div>
+          {analyzedCampaigns.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {analyzedCampaigns.slice(0, 3).map((c) => (
+                <div key={c._id}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--text-primary)' }}>{c.brief?.substring(0, 40)}...</div>
+                  <div className="perf-bar-wrap">
+                    <div className="perf-bar-head"><span className="perf-bar-label">Open Rate</span><span className="perf-bar-val">{c.metrics?.openRate || 0}%</span></div>
+                    <div className="perf-track"><div className="perf-fill purple" style={{ width: `${Math.min(c.metrics?.openRate || 0, 100)}%` }} /></div>
+                  </div>
+                  <div className="perf-bar-wrap">
+                    <div className="perf-bar-head"><span className="perf-bar-label">Click Rate</span><span className="perf-bar-val">{c.metrics?.clickRate || 0}%</span></div>
+                    <div className="perf-track"><div className="perf-fill green" style={{ width: `${Math.min(c.metrics?.clickRate || 0, 100)}%` }} /></div>
+                  </div>
+                </div>
+              ))}
             </div>
-          )}
-
-          {!loading && campaigns.length === 0 && (
-            <div className="glass" style={{ padding: 0 }}>
-              <EmptyState
-                icon={"🚀"} title="No campaigns created yet"
-                description="Start your first AI-powered campaign in minutes"
-                action={<Link href="/campaigns/new" className="btn btn-primary">Create First Campaign</Link>}
-              />
+          ) : (
+            <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)', fontSize: 13 }}>
+              Performance data will appear after campaigns are analyzed
             </div>
           )}
         </div>
 
-        {/* Side Panel (1/3 width) */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          {/* Campaign Distribution */}
-          <div className="glass" style={{ padding: 24 }}>
-            <h4 style={{ fontWeight: 700, marginBottom: 16 }}>Campaign Distribution</h4>
-            <div>
-              <div className="dist-item">
-                <div className="dist-header">
-                  <span>Email Marketing</span>
-                  <span>75%</span>
-                </div>
-                <div className="dist-track">
-                  <div className="dist-fill" style={{ width: '75%', background: 'var(--accent-primary)' }} />
-                </div>
-              </div>
-              <div className="dist-item">
-                <div className="dist-header">
-                  <span>LinkedIn Outreach</span>
-                  <span>42%</span>
-                </div>
-                <div className="dist-track">
-                  <div className="dist-fill" style={{ width: '42%', background: 'rgba(163,230,53,0.6)' }} />
-                </div>
-              </div>
-              <div className="dist-item">
-                <div className="dist-header">
-                  <span>Customer Support AI</span>
-                  <span>91%</span>
-                </div>
-                <div className="dist-track">
-                  <div className="dist-fill" style={{ width: '91%', background: 'var(--accent-green)' }} />
-                </div>
-              </div>
-            </div>
+        <div className="card">
+          <div className="section-header">
+            <h2>AI Agent Activity</h2>
+            <Link href="/ai-studio" className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }}>{"View Studio \u{2192}"}</Link>
           </div>
-
-          {/* Upgrade CTA */}
-          <div className="cta-card">
-            <h4>Automate More</h4>
-            <p>Unleash the full potential of your campaigns with Advanced AI Agents.</p>
-            <button className="cta-btn">Upgrade to Enterprise</button>
-          </div>
-
-          {/* Active Agents Map */}
-          <div className="glass" style={{ padding: 24 }}>
-            <h4 style={{ fontWeight: 700, marginBottom: 16 }}>Active Agents Map</h4>
-            <div style={{
-              aspectRatio: '16/9', width: '100%', background: 'rgba(255,255,255,0.02)', borderRadius: 12,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 4
-            }}>
-              <span className="material-symbols-outlined" style={{ color: 'var(--accent-primary)', fontSize: 36 }}>public</span>
-              <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 2, color: 'var(--text-muted)' }}>Global Coverage</span>
-            </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {[
+              { agent: 'Orchestrator', status: 'idle', icon: '\u{1F9E0}', desc: 'Coordinating multi-agent workflows' },
+              { agent: 'Strategy Agent', status: 'idle', icon: '\u{1F3AF}', desc: 'Customer segmentation & targeting' },
+              { agent: 'Content Agent', status: 'idle', icon: '\u{270D}', desc: 'Generating email variants' },
+              { agent: 'Analysis Agent', status: 'idle', icon: '\u{1F4CA}', desc: 'Performance analytics & optimization' },
+            ].map((a) => (
+              <div key={a.agent} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                <div className={`agent-avatar ${a.agent.split(' ')[0].toLowerCase()}`}>
+                  {a.icon}
+                  <div className={`agent-status ${a.status}`} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{a.agent}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{a.desc}</div>
+                </div>
+                <span className={`badge ${a.status === 'active' ? 'badge-success' : 'badge-draft'}`}>{a.status}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>

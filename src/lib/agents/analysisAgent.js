@@ -8,6 +8,63 @@ import { callLLM } from './llmService';
 import { analyzeSchema, detectIdField, isIdentityField } from './schemaAnalyzer';
 
 /**
+ * Pure-JS compact report summary builder — zero LLM cost.
+ * Returns a ~100-token JSON perfect for feeding optimization loops.
+ */
+export function buildReportSummary(reportData, analysis = {}) {
+    const rows = reportData?.data || [];
+    const { openField, clickField } = detectReportMetricFieldsInternal(rows);
+    
+    const totalSent = rows.length;
+    const totalOpened = rows.filter(r => isMetricTrueInternal(r, openField)).length;
+    const totalClicked = rows.filter(r => isMetricTrueInternal(r, clickField)).length;
+    const openRate = totalSent > 0 ? Number(((totalOpened / totalSent) * 100).toFixed(2)) : 0;
+    const clickRate = totalSent > 0 ? Number(((totalClicked / totalSent) * 100).toFixed(2)) : 0;
+
+    // Find best and worst subjects
+    const bySubject = {};
+    rows.forEach(r => {
+        const key = r.subject || 'unknown';
+        if (!bySubject[key]) bySubject[key] = { total: 0, opened: 0, clicked: 0 };
+        bySubject[key].total++;
+        if (isMetricTrueInternal(r, openField)) bySubject[key].opened++;
+        if (isMetricTrueInternal(r, clickField)) bySubject[key].clicked++;
+    });
+
+    const ranked = Object.entries(bySubject)
+        .map(([subject, s]) => ({ subject, openRate: s.total > 0 ? (s.opened/s.total)*100 : 0, clickRate: s.total > 0 ? (s.clicked/s.total)*100 : 0, total: s.total }))
+        .sort((a, b) => b.clickRate - a.clickRate || b.openRate - a.openRate);
+
+    const winner = ranked[0];
+    const loser = ranked[ranked.length - 1];
+
+    // Generate one-line diagnostic
+    let insight = '';
+    if (openRate < 18) insight = 'Very low open rate — subjects too generic or send time wrong. Force 1.25% benefit + local city angle.';
+    else if (openRate < 27) insight = 'Below BFSI benchmark (27%) — tighten micro-segmentation and add urgency to subjects.';
+    else if (clickRate < 4) insight = 'Opens OK but clicks low — body CTA too weak. Bold the 1.25% more prominently and shorten body.';
+    else insight = `Good performance. Open ${openRate}%, Click ${clickRate}%. Repeat winning patterns.`;
+
+    return {
+        openRate,
+        clickRate,
+        totalSent,
+        winnerSubject: winner?.subject?.substring(0, 50) || 'N/A',
+        winnerOpenRate: Number((winner?.openRate || 0).toFixed(1)),
+        winnerClickRate: Number((winner?.clickRate || 0).toFixed(1)),
+        loserSubject: loser?.subject?.substring(0, 50) || 'N/A',
+        insight,
+    };
+}
+
+function detectReportMetricFieldsInternal(reportRows) {
+    return detectReportMetricFields(reportRows);
+}
+function isMetricTrueInternal(row, field) {
+    return isMetricTrue(row, field);
+}
+
+/**
  * Dynamically detect which report fields represent "email opened" and "email clicked".
  * Inspects field names and values — no hardcoded assumptions about EO/EC.
  * Fallback chain: name pattern → Y/N boolean fields → OpenAPI spec hints.
@@ -87,6 +144,47 @@ function detectReportIdField(reportRows, cohortIdField) {
     if (/^[A-Z]{2,}[\-_]?\d+$/i.test(sampleVal)) return fields[0];
 
     return cohortIdField || fields[0];
+}
+
+function buildDeterministicAnalysis(totalSent, totalOpened, totalClicked, bySubject, segmentStats) {
+    const rankedSubjects = Object.entries(bySubject)
+        .map(([subject, stat]) => {
+            const openRate = stat.total > 0 ? (stat.opened / stat.total) * 100 : 0;
+            const clickRate = stat.total > 0 ? (stat.clicked / stat.total) * 100 : 0;
+            return { subject, ...stat, openRate, clickRate };
+        })
+        .sort((a, b) => (b.clickRate - a.clickRate) || (b.openRate - a.openRate));
+
+    const winner = rankedSubjects[0];
+    const topSegments = segmentStats.slice(0, 5).map((s) => `${s.field}:${s.value} (click ${s.clickRate}%, open ${s.openRate}%, n=${s.total})`);
+    const bottomSegments = segmentStats.slice(-5).map((s) => `${s.field}:${s.value} (click ${s.clickRate}%, open ${s.openRate}%, n=${s.total})`);
+
+    return {
+        overallPerformance: {
+            openRate: totalSent > 0 ? Number(((totalOpened / totalSent) * 100).toFixed(2)) : 0,
+            clickRate: totalSent > 0 ? Number(((totalClicked / totalSent) * 100).toFixed(2)) : 0,
+            totalSent,
+            totalOpened,
+            totalClicked,
+        },
+        abTestWinner: winner
+            ? `Top subject by click/open: "${winner.subject}" (click ${winner.clickRate.toFixed(2)}%, open ${winner.openRate.toFixed(2)}%, n=${winner.total}).`
+            : 'Not enough A/B subject data to determine a winner.',
+        topSegments,
+        bottomSegments,
+        insights: [
+            'Fallback analysis mode used because LLM was unavailable (network/DNS issue).',
+            'Prioritize subject lines with higher click rate first, then open rate.',
+            'Focus optimization on bottom-performing demographic slices with enough sample size.'
+        ],
+        recommendedActions: [
+            'Reuse winning subject pattern for the next iteration.',
+            'Retarget bottom segments with adjusted send time and stronger CTA.',
+            'Run a smaller A/B retest before full relaunch.'
+        ],
+        reasoning: 'Deterministic analysis computed from report aggregates and segment statistics due to LLM outage.',
+        fallbackUsed: true,
+    };
 }
 
 export async function analysisAgent(reportData, originalStrategy, cohortData) {
@@ -184,7 +282,13 @@ Provide analysis in JSON:
   "reasoning": "step-by-step analysis reasoning"
 }`;
 
-    const analysis = await callLLM(systemPrompt, userPrompt, { jsonMode: true, temperature: 0.3 });
+    let analysis;
+    try {
+        analysis = await callLLM(systemPrompt, userPrompt, { jsonMode: true, temperature: 0.3 });
+    } catch (error) {
+        console.error(`[ANALYSIS] LLM unavailable, switching to deterministic fallback: ${error.message}`);
+        analysis = buildDeterministicAnalysis(totalSent, totalOpened, totalClicked, bySubject, segmentStats);
+    }
 
     // Ensure computed metrics are included
     analysis.overallPerformance = {
@@ -194,6 +298,10 @@ Provide analysis in JSON:
         totalOpened,
         totalClicked,
     };
+
+    // Build compact report summary for optimization loops (pure JS, no LLM cost)
+    analysis.reportSummary = buildReportSummary(reportData, analysis);
+    console.log(`[ANALYSIS] reportSummary: ${JSON.stringify(analysis.reportSummary)}`);
 
     return analysis;
 }

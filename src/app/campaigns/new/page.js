@@ -1,562 +1,350 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useRef } from 'react';
+import Link from 'next/link';
 
 const STEPS = [
-  { num: 1, label: 'Campaign Brief' },
-  { num: 2, label: 'Cohort Analysis' },
-  { num: 3, label: 'Strategy Review' },
-  { num: 4, label: 'Content Preview' },
-  { num: 5, label: 'Approval & Launch' },
+  { label: 'Brief', icon: 'edit_note', desc: 'Define campaign objectives' },
+  { label: 'Orchestration', icon: 'account_tree', desc: 'AI agent workflow' },
+  { label: 'Preview', icon: 'visibility', desc: 'Review & approve' },
 ];
 
-export default function CampaignCreation() {
-  const router = useRouter();
-  const [step, setStep] = useState(1);
+const ORCHESTRATION_NODES = [
+  { icon: 'psychology', label: 'Strategy', status: 'processing' },
+  { icon: 'draw', label: 'Content', status: 'pending' },
+  { icon: 'analytics', label: 'Analysis', status: 'pending' },
+];
+
+export default function NewCampaign() {
+  const [step, setStep] = useState(0);
   const [brief, setBrief] = useState('');
   const [loading, setLoading] = useState(false);
-  const [loadingMsg, setLoadingMsg] = useState('');
-  const [campaignPlan, setCampaignPlan] = useState(null);
-  const [dbCampaignId, setDbCampaignId] = useState(null);
-  const [sentResults, setSentResults] = useState(null);
-  const [logs, setLogs] = useState([]);
-  const [discoveredTools, setDiscoveredTools] = useState([]);
-  const [cohortStats, setCohortStats] = useState(null);
-  const logEndRef = useRef(null);
+  const [result, setResult] = useState(null);
+  const [variants, setVariants] = useState([]);
+  const [orchestrating, setOrchestrating] = useState(false);
+  const [orchProgress, setOrchProgress] = useState(0);
+  const [error, setError] = useState('');
+  const [launched, setLaunched] = useState(false);
+  const briefRef = useRef(null);
 
-  useEffect(() => {
-    fetch('/api/discover')
-      .then((r) => r.json())
-      .then((d) => setDiscoveredTools(d.tools || []))
-      .catch(() => {});
-  }, []);
+  const handleOrchestrate = async () => {
+    if (!brief.trim()) { setError('Please enter a campaign brief.'); return; }
+    setError('');
+    setOrchestrating(true);
+    setStep(1);
+    setOrchProgress(0);
 
-  useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [logs]);
-
-  const addLog = (e) => setLogs((prev) => [...prev, e]);
-
-  const computeCohortStats = (data) => {
-    if (!data || data.length === 0) return null;
-    const fields = Object.keys(data[0]);
-    const stats = { total: data.length, fields: fields.length, demographics: {}, categoricalFields: [], numericFields: [] };
-    // Skip identity/contact fields dynamically (matches server-side schemaAnalyzer logic)
-    const skipPatterns = [/(_id|^id)$/i, /email/i, /^_/, /^(full_?name|first_?name|last_?name|name|display_?name|username)$/i, /phone|mobile|tel/i];
-    const isSkipField = (f) => skipPatterns.some((p) => p.test(f));
-
-    for (const f of fields) {
-      if (isSkipField(f)) continue;
-      // Detect if field is numeric by sampling
-      const sampleVals = data.slice(0, 50).map((c) => c[f]).filter((v) => v !== null && v !== undefined && v !== '');
-      const numericCount = sampleVals.filter((v) => !isNaN(Number(v))).length;
-      const isNumeric = sampleVals.length > 0 && numericCount / sampleVals.length > 0.8;
-
-      if (isNumeric) {
-        const vals = data.map((c) => Number(c[f])).filter((v) => !isNaN(v));
-        if (vals.length === 0) continue;
-        stats.demographics[`${f}_avg`] = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
-        stats.demographics[`${f}_min`] = Math.min(...vals);
-        stats.demographics[`${f}_max`] = Math.max(...vals);
-        stats.numericFields.push(f);
-      } else {
-        const counts = {};
-        data.forEach((c) => { const v = c[f]; if (v !== null && v !== undefined) counts[v] = (counts[v] || 0) + 1; });
-        const uniqueCount = Object.keys(counts).length;
-        if (uniqueCount > 0 && uniqueCount <= 30) {
-          stats.demographics[f] = counts;
-          stats.categoricalFields.push(f);
-        }
-      }
-    }
-    return stats;
-  };
-
-  const topN = (obj, n = 5) => Object.entries(obj || {}).sort((a, b) => b[1] - a[1]).slice(0, n);
-  const colors = ['#8b5cf6', '#3b82f6', '#06b6d4', '#ec4899', '#f59e0b', '#10b981', '#ef4444'];
-
-  // Step 1 → Analyze Brief
-  const handleAnalyze = async () => {
-    if (!brief.trim()) return;
-    setLoading(true);
-    setLoadingMsg('🧠 AI agents are reading API docs, analyzing your cohort, and creating strategy...');
-    addLog({ agent: 'orchestrator', step: 'init', reasoning: 'Starting agentic campaign workflow — reading API documentation dynamically' });
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000); // 5 min timeout
+    // Simulate orchestration progress
+    const interval = setInterval(() => {
+      setOrchProgress((prev) => {
+        if (prev >= 95) { clearInterval(interval); return 95; }
+        return prev + Math.random() * 15;
+      });
+    }, 500);
 
     try {
-      const res = await fetch('/api/agent', {
+      const response = await fetch('/api/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'start', brief }),
-        signal: controller.signal,
       });
-      clearTimeout(timeoutId);
-      const data = await res.json();
-      if (data.success) {
-        setCampaignPlan(data.plan);
-        setDbCampaignId(data.campaignId);
-        const cs = computeCohortStats(data.plan.cohortData);
-        setCohortStats(cs);
-        if (data.logs) data.logs.forEach((l) => addLog(l));
-        setStep(2);
-      } else {
-        addLog({ agent: 'error', reasoning: data.error || 'Failed' });
-      }
+      const data = await response.json();
+      clearInterval(interval);
+      setOrchProgress(100);
+      setResult(data);
+
+      // Use real API response fields for variants preview
+      const planVariants = data.plan?.contentVariants || [];
+      setVariants(planVariants.map((v, i) => ({
+        name: v.variantName || `Variant ${String.fromCharCode(65 + i)}`,
+        match: v.matchScore ? `${v.matchScore}%` : '—',
+        subject: v.subject || 'Untitled',
+        body: v.body?.substring(0, 200) || '',
+        segment: v.targetSegment || 'General',
+      })));
+
+      setTimeout(() => { setStep(2); setOrchestrating(false); }, 1200);
     } catch (err) {
-      clearTimeout(timeoutId);
-      if (err.name === 'AbortError') {
-        addLog({ agent: 'error', reasoning: 'Request timed out after 5 minutes. The external API may be slow. Please try again.' });
-      } else {
-        addLog({ agent: 'error', reasoning: err.message });
-      }
-    } finally {
-      setLoading(false);
+      clearInterval(interval);
+      setOrchestrating(false);
+      setError('Orchestration failed. Please try again.');
+      setStep(0);
     }
   };
 
-  // Step 5 → Approve & Send
-  const handleApprove = async () => {
+  const handleLaunch = async () => {
     setLoading(true);
-    setLoadingMsg('📤 Sending campaigns via dynamically discovered API...');
-    addLog({ agent: 'orchestrator', reasoning: 'Human approved → executing via agentic API tool calling' });
     try {
-      const res = await fetch('/api/agent', {
+      const response = await fetch('/api/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'approve', campaignId: dbCampaignId, approvedVariants: campaignPlan.contentVariants }),
+        body: JSON.stringify({ action: 'approve', campaignId: result?.campaignId }),
       });
-      const data = await res.json();
-      if (data.success) {
-        setSentResults(data.results);
-        addLog({ agent: 'orchestrator', reasoning: `Campaigns sent! IDs: ${data.results.map((r) => r.campaign_id).join(', ')}` });
-      } else {
-        addLog({ agent: 'error', reasoning: data.error });
-      }
-    } catch (err) {
-      addLog({ agent: 'error', reasoning: err.message });
-    } finally {
-      setLoading(false);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Launch failed.');
+      setLaunched(true);
+    } catch (e) {
+      setError(e.message || 'Launch failed.');
     }
+    setLoading(false);
   };
 
+  if (launched) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', textAlign: 'center' }}>
+        <div className="glass" style={{ padding: 48, maxWidth: 500, width: '100%' }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🚀</div>
+          <h2 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>Campaign Launched!</h2>
+          <p style={{ color: 'var(--text-muted)', marginBottom: 24, lineHeight: 1.6 }}>
+            Your AI agents are now executing the campaign. Track progress in real-time from the dashboard.
+          </p>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+            <Link href="/" className="btn btn-primary">Go to Dashboard</Link>
+            <button className="btn btn-ghost" onClick={() => { setLaunched(false); setStep(0); setBrief(''); setResult(null); setVariants([]); }}>Create Another</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <>
-      {/* Stepper */}
-      <div className="stepper">
+    <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 32, minHeight: 'calc(100vh - 140px)' }}>
+      {/* Left Step Navigation */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {STEPS.map((s, i) => (
-          <div key={s.num} style={{ display: 'contents' }}>
-            <div className={`stepper-step ${step === s.num ? 'active' : ''} ${step > s.num ? 'done' : ''}`}>
-              <div className="stepper-circle">
-                {step > s.num ? '✓' : s.num}
-              </div>
-              <span className="stepper-label">{s.label}</span>
+          <div
+            key={s.label}
+            onClick={() => { if (i < step) setStep(i); }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px',
+              borderRadius: 12, cursor: i <= step ? 'pointer' : 'default',
+              background: step === i ? 'var(--accent-primary)' : i < step ? 'rgba(16,185,129,0.1)' : 'transparent',
+              color: step === i ? '#fff' : i < step ? 'var(--accent-green)' : 'var(--text-muted)',
+              border: '1px solid',
+              borderColor: step === i ? 'var(--accent-primary)' : i < step ? 'rgba(16,185,129,0.2)' : 'var(--border)',
+              transition: 'all 0.3s',
+              opacity: i > step ? 0.4 : 1,
+            }}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>
+              {i < step ? 'check_circle' : s.icon}
+            </span>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 13 }}>{s.label}</div>
+              <div style={{ fontSize: 10, opacity: 0.7 }}>{s.desc}</div>
             </div>
-            {i < STEPS.length - 1 && (
-              <div className={`stepper-line ${step > s.num ? 'done' : ''} ${step === s.num + 1 ? 'active' : ''}`} />
-            )}
           </div>
         ))}
+
+        <div style={{ flex: 1 }} />
+
+        {/* Progress indicator */}
+        <div style={{ padding: 16, borderRadius: 12, background: 'rgba(163,230,53,0.05)', border: '1px solid rgba(163,230,53,0.1)' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-primary)', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8 }}>Progress</div>
+          <div style={{ display: 'flex', gap: 3 }}>
+            {STEPS.map((_, i) => (
+              <div key={i} style={{ flex: 1, height: 4, borderRadius: 4, background: i <= step ? 'var(--accent-primary)' : 'var(--border)', transition: 'background 0.3s' }} />
+            ))}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 8 }}>Step {step + 1} of {STEPS.length}</div>
+        </div>
       </div>
 
-      {/* Loading overlay */}
-      {loading && (
-        <div className="card">
-          <div className="loading-state">
-            <div className="spinner spinner-lg" />
-            <p>{loadingMsg}</p>
-            {logs.length > 0 && (
-              <div style={{ width: '100%', maxWidth: 600, marginTop: 16 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 8 }}>
-                  Agent Activity
-                </div>
-                <div className="agent-log" style={{ maxHeight: 150 }}>
-                  {logs.slice(-5).map((l, i) => (
-                    <div key={i} className={`log-item ${l.agent}`}>
-                      <span className="log-agent">{l.agent}</span>
-                      <span className="log-msg">{l.step && <strong>[{l.step}] </strong>}{l.reasoning}</span>
+      {/* Main Content */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        {error && (
+          <div style={{ padding: '12px 16px', borderRadius: 12, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: 'var(--accent-red)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>error</span>
+            {error}
+          </div>
+        )}
+
+        {/* Step 0: Brief */}
+        {step === 0 && (
+          <div className="glass" style={{ padding: 32 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(163,230,53,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span className="material-symbols-outlined" style={{ color: 'var(--accent-primary)', fontSize: 22 }}>auto_awesome</span>
+              </div>
+              <div>
+                <h2 style={{ fontWeight: 700, fontSize: 20 }}>Campaign Briefing</h2>
+                <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Describe your campaign goals and target audience</p>
+              </div>
+            </div>
+
+            <div className="brief-box">
+              <textarea
+                ref={briefRef}
+                className="brief-textarea"
+                value={brief}
+                onChange={(e) => setBrief(e.target.value)}
+                placeholder={`Example: Launch an outreach campaign targeting SaaS CTOs in Series B+ companies. Focus on personalized messaging about our AI analytics platform's ROI improvements. Include follow-up sequences and A/B test subject lines.`}
+                rows={8}
+                style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13 }}
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 }}>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{brief.length} / 2000 characters</span>
+              <button className="btn btn-primary" onClick={handleOrchestrate} disabled={!brief.trim() || loading}>
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>rocket_launch</span>
+                Start Orchestrating
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 1: Orchestration */}
+        {step === 1 && (
+          <div className="glass" style={{ padding: 32 }}>
+            <div style={{ textAlign: 'center', marginBottom: 32 }}>
+              <h2 style={{ fontWeight: 700, fontSize: 20, marginBottom: 8 }}>Orchestration Blueprint</h2>
+              <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>AI agents are working on your campaign</p>
+            </div>
+
+            {/* Node Flow */}
+            <div className="orch-flow">
+              {ORCHESTRATION_NODES.map((node, i) => {
+                const isActive = orchProgress >= (i === 0 ? 0 : i === 1 ? 33 : 66);
+                const isDone = orchProgress >= (i === 0 ? 33 : i === 1 ? 66 : 100);
+                return (
+                  <div key={node.label} style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+                    <div className="orch-node">
+                      <div className={`orch-circle ${isDone ? 'orch-circle-active' : isActive ? 'orch-circle-active' : 'orch-circle-pending'}`}>
+                        <span className="material-symbols-outlined">
+                          {isDone ? 'check' : node.icon}
+                        </span>
+                      </div>
+                      <span className="orch-label" style={{ color: isActive ? 'var(--accent-primary)' : 'var(--text-muted)' }}>
+                        {node.label}
+                      </span>
+                      <span className="orch-badge" style={{
+                        background: isDone ? 'rgba(16,185,129,0.2)' : isActive ? 'rgba(163,230,53,0.2)' : 'rgba(255,255,255,0.05)',
+                        color: isDone ? 'var(--accent-green)' : isActive ? 'var(--accent-primary)' : 'var(--text-muted)',
+                      }}>
+                        {isDone ? 'Complete' : isActive ? 'Processing' : 'Queued'}
+                      </span>
                     </div>
-                  ))}
-                  <div ref={logEndRef} />
+                    {i < ORCHESTRATION_NODES.length - 1 && (
+                      <div className={`orch-connector ${isActive ? 'orch-connector-active' : 'orch-connector-pending'}`}>
+                        {isActive && !isDone && <div className="orch-connector-dot" />}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Progress Bar */}
+            <div style={{ marginTop: 32 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Overall Progress</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent-primary)' }}>{Math.round(orchProgress)}%</span>
+              </div>
+              <div className="progress-bar" style={{ height: 8 }}>
+                <div className="progress-bar-fill purple" style={{ width: `${orchProgress}%` }} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Preview & Approve */}
+        {step === 2 && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <h2 style={{ fontWeight: 700, fontSize: 20, marginBottom: 4 }}>Human-in-the-Loop Review</h2>
+                <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Review AI-generated variants before launch</p>
+              </div>
+              <button className="btn btn-primary" onClick={handleLaunch} disabled={loading}>
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>rocket_launch</span>
+                {loading ? 'Launching...' : 'Launch Campaign'}
+              </button>
+            </div>
+
+            {/* Variant Cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+              {variants.map((v, i) => (
+                <div className="glass variant-card" key={i}>
+                  <div className="variant-header">
+                    <div className="variant-name">
+                      <span className="material-symbols-outlined" style={{ fontSize: 16 }}>mail</span>
+                      {v.name}
+                    </div>
+                    <span className="variant-match">Match: {v.match}</span>
+                  </div>
+                  <div className="variant-body">
+                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-muted)', marginBottom: 6 }}>{v.segment}</div>
+                    <h4 style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>{v.subject}</h4>
+                    <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.7 }}>{v.body}</p>
+                  </div>
+                  <div className="variant-actions">
+                    <button className="variant-btn variant-btn-edit">
+                      <span className="material-symbols-outlined" style={{ fontSize: 14 }}>edit</span>
+                      Edit
+                    </button>
+                    <button className="variant-btn variant-btn-approve">
+                      <span className="material-symbols-outlined" style={{ fontSize: 14 }}>check</span>
+                      Approve
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Strategy Summary */}
+            {result?.plan?.strategy && (
+              <div className="glass" style={{ padding: 24 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                  <span className="material-symbols-outlined" style={{ color: 'var(--accent-primary)', fontSize: 20 }}>psychology</span>
+                  <h4 style={{ fontWeight: 700 }}>Strategy Summary</h4>
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                  {typeof result.plan.strategy === 'string' ? result.plan.strategy : JSON.stringify(result.plan.strategy, null, 2)}
                 </div>
               </div>
             )}
-          </div>
-        </div>
-      )}
 
-      {/* ═══════════ STEP 1: CAMPAIGN BRIEF ═══════════ */}
-      {step === 1 && !loading && (
-        <div className="card">
-          <div className="section-header">
-            <span className="section-num">1</span>
-            <h2>Campaign Brief</h2>
-            <span className="section-badge sbadge-ai">AI-Powered Analysis</span>
-          </div>
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.6 }}>
-            Describe your campaign in natural language. The AI agents will analyze the customer cohort, create segmentation strategy,
-            and generate optimized email content — all autonomously.
-          </p>
-
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 10 }}>
-              Quick Templates
-            </div>
-            <div className="filter-chips">
-              {[
-                'Product Launch Campaign',
-                'Seasonal Promotion',
-                'Customer Retention',
-                'Cross-sell / Upsell',
-              ].map((t) => (
-                <button key={t} className="filter-chip" onClick={() => setBrief((prev) => prev ? prev : `Run an email campaign for ${t.toLowerCase()}...`)}>
-                  {t}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="brief-box">
-            <textarea
-              className="brief-textarea"
-              placeholder="e.g., Run email campaign for launching XDeposit, a flagship term deposit product from SuperBFSI, that gives 1 percentage point higher returns than its competitors. Announce an additional 0.25% higher returns for female senior citizens. Optimise for open rate and click rate..."
-              value={brief}
-              onChange={(e) => setBrief(e.target.value)}
-            />
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 18 }}>
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{brief.length} / 5000 characters</span>
-            <button className="btn btn-primary btn-lg" onClick={handleAnalyze} disabled={loading || !brief.trim()}>
-              🚀 Analyze Brief & Generate Strategy
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ═══════════ STEP 2: COHORT ANALYSIS ═══════════ */}
-      {step === 2 && !loading && campaignPlan && (
-        <div className="card">
-          <div className="section-header">
-            <span className="section-num">2</span>
-            <h2>Customer Cohort Analysis</h2>
-            <span className="section-badge sbadge-live">Live Data</span>
-          </div>
-
-          {cohortStats && (
-            <>
-              <div className="g4" style={{ marginBottom: 24 }}>
-                <div className="mtile">
-                  <div className="mtile-val">{cohortStats.total?.toLocaleString()}</div>
-                  <div className="mtile-label">Total Customers</div>
+            {/* Segments from Strategy */}
+            {result?.plan?.strategy?.segments?.length > 0 && (
+              <div className="glass" style={{ padding: 24 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                  <span className="material-symbols-outlined" style={{ color: 'var(--accent-primary)', fontSize: 20 }}>group</span>
+                  <h4 style={{ fontWeight: 700 }}>Segments</h4>
                 </div>
-                <div className="mtile">
-                  <div className="mtile-val">{cohortStats.fields}</div>
-                  <div className="mtile-label">Data Fields</div>
-                </div>
-                <div className="mtile">
-                  <div className="mtile-val">{campaignPlan.strategy?.segments?.length || 0}</div>
-                  <div className="mtile-label">AI Segments</div>
-                </div>
-                <div className="mtile">
-                  <div className="mtile-val">{campaignPlan.contentVariants?.length || 0}</div>
-                  <div className="mtile-label">Content Variants</div>
+                <div className="g3">
+                  {result.plan.strategy.segments.map((seg, i) => (
+                    <div key={i} className="seg-card">
+                      <div className="seg-head">
+                        <span className="seg-name">{seg.name}</span>
+                        <span className="seg-count">{seg.count?.toLocaleString()} customers</span>
+                      </div>
+                      {seg.description && <p className="seg-desc">{seg.description}</p>}
+                      <div className="seg-meta">
+                        {seg.recommendedTone && <span>🎯 {seg.recommendedTone}</span>}
+                        {seg.recommendedSendTime && <span>🕐 {seg.recommendedSendTime}</span>}
+                        {seg.priority && <span>⚡ {seg.priority}</span>}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
+            )}
 
-              <div className="g3">
-                {/* Dynamically render categorical distributions (top 3) */}
-                {(cohortStats.categoricalFields || []).slice(0, 3).map((field, fi) => (
-                  <div key={field} className="cohort-stat">
-                    <div className="cohort-stat-title">{field.replace(/_/g, ' ')} Distribution</div>
-                    <div className="cohort-bar">
-                      {topN(cohortStats.demographics[field], 6).map(([k, v], i) => (
-                        <div key={k} className="cohort-bar-item"
-                          style={{ height: `${(v / cohortStats.total) * 100 * 2.5}px`, background: colors[i % colors.length], opacity: 0.8 }}
-                          title={`${k}: ${v}`} />
-                      ))}
-                    </div>
-                    <div className="cohort-bar-label">
-                      {topN(cohortStats.demographics[field], 6).map(([k, v]) => (<span key={k}>{k}: {v}</span>))}
-                    </div>
-                  </div>
-                ))}
-                {/* Dynamically render numeric averages */}
-                {(cohortStats.numericFields || []).length > 0 && (
-                  <div className="cohort-stat">
-                    <div className="cohort-stat-title">Key Averages</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      {(cohortStats.numericFields || []).map((field) => (
-                        <div key={field} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                          <span style={{ color: 'var(--text-muted)' }}>Avg {field.replace(/_/g, ' ')}</span>
-                          <span style={{ fontWeight: 700, color: 'var(--accent)' }}>{cohortStats.demographics[`${field}_avg`]?.toLocaleString()}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+            {/* Workflow Plan */}
+            {result?.plan?.workflowPlan && (
+              <div className="glass" style={{ padding: 24 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                  <span className="material-symbols-outlined" style={{ color: 'var(--accent-primary)', fontSize: 20 }}>account_tree</span>
+                  <h4 style={{ fontWeight: 700 }}>Workflow Plan</h4>
+                </div>
+                <pre style={{ fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                  {typeof result.plan.workflowPlan === 'string' ? result.plan.workflowPlan : JSON.stringify(result.plan.workflowPlan, null, 2)}
+                </pre>
               </div>
-            </>
-          )}
-
-          <div className="approval-bar">
-            <button className="btn btn-outline" onClick={() => setStep(1)}>← Back to Brief</button>
-            <button className="btn btn-primary" onClick={() => setStep(3)} style={{ marginLeft: 'auto' }}>
-              Continue to Strategy →
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ═══════════ STEP 3: STRATEGY REVIEW ═══════════ */}
-      {step === 3 && !loading && campaignPlan && (
-        <div className="card">
-          <div className="section-header">
-            <span className="section-num">3</span>
-            <h2>AI Campaign Strategy</h2>
-            <span className="section-badge sbadge-ai">🧠 AI-Generated</span>
-          </div>
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20, lineHeight: 1.6 }}>
-            {campaignPlan.strategy?.overallStrategy}
-          </p>
-
-          {/* Workflow Plan */}
-          {campaignPlan.workflowPlan && (
-            <div style={{ marginBottom: 24 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 12 }}>
-                AI-Generated Workflow Plan
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {(campaignPlan.workflowPlan?.steps || []).map((s, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 10 }}>
-                    <div style={{ width: 26, height: 26, borderRadius: 8, background: 'var(--gradient-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
-                      {s.step}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{s.action}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{s.reasoning?.substring(0, 120)}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Segments */}
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 12 }}>
-            Customer Segments ({campaignPlan.strategy?.segments?.length || 0})
-          </div>
-          {(campaignPlan.strategy?.segments || []).map((seg, i) => (
-            <div key={i} className="seg-card">
-              <div className="seg-head">
-                <span className="seg-name">{seg.name}</span>
-                <span className="seg-count">{seg.count || seg.customerIds?.length} customers</span>
-              </div>
-              <div className="seg-desc">{seg.description}</div>
-              <div className="seg-meta">
-                <span>🎯 {seg.recommendedTone}</span>
-                <span>🕐 {seg.recommendedSendTime}</span>
-                <span>⚡ {seg.priority || 'medium'}</span>
-              </div>
-            </div>
-          ))}
-
-          <div className="approval-bar">
-            <button className="btn btn-outline" onClick={() => setStep(2)}>← Back</button>
-            <button className="btn btn-primary" onClick={() => setStep(4)} style={{ marginLeft: 'auto' }}>
-              Continue to Content →
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ═══════════ STEP 4: CONTENT PREVIEW ═══════════ */}
-      {step === 4 && !loading && campaignPlan && (
-        <div className="card">
-          <div className="section-header">
-            <span className="section-num">4</span>
-            <h2>Email Content Preview</h2>
-            <span className="section-badge sbadge-ai">✍️ AI-Written</span>
-          </div>
-          <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 20, lineHeight: 1.6 }}>
-            Review the AI-generated email variants below. Each segment receives A/B test variants for performance optimization.
-          </p>
-
-          {(campaignPlan.contentVariants || []).map((v, i) => (
-            <div key={i} className="email-card">
-              <div className="email-variant-label">
-                <span className="email-variant-tag">{v.targetSegment} — Variant {v.variantName}</span>
-                <span className="email-rcpt">{v.customerIds?.length} recipients</span>
-              </div>
-              <div className="email-preview-box">
-                <div className="email-subj">{v.subject}</div>
-                <div className="email-body-text">{v.body}</div>
-              </div>
-            </div>
-          ))}
-
-          <div className="approval-bar">
-            <button className="btn btn-outline" onClick={() => setStep(3)}>← Back</button>
-            <button className="btn btn-primary" onClick={() => setStep(5)} style={{ marginLeft: 'auto' }}>
-              Continue to Approval →
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ═══════════ STEP 5: APPROVAL & LAUNCH ═══════════ */}
-      {step === 5 && !loading && campaignPlan && !sentResults && (
-        <div className="card">
-          <div className="section-header">
-            <span className="section-num">5</span>
-            <h2>Human-in-the-Loop Approval</h2>
-            <span className="section-badge sbadge-warn">⏳ Awaiting Approval</span>
-          </div>
-
-          {/* Campaign Summary */}
-          <div className="g3" style={{ marginBottom: 24 }}>
-            <div className="mtile">
-              <div className="mtile-val">{campaignPlan.contentVariants?.reduce((sum, v) => sum + (v.customerIds?.length || 0), 0)}</div>
-              <div className="mtile-label">Total Recipients</div>
-            </div>
-            <div className="mtile">
-              <div className="mtile-val">{campaignPlan.contentVariants?.length || 0}</div>
-              <div className="mtile-label">Email Variants</div>
-            </div>
-            <div className="mtile">
-              <div className="mtile-val">{campaignPlan.strategy?.segments?.length || 0}</div>
-              <div className="mtile-label">Segments</div>
-            </div>
-          </div>
-
-          {/* Checklist */}
-          <div style={{ marginBottom: 24 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 12 }}>
-              Pre-Launch Checklist
-            </div>
-            {[
-              { label: 'Campaign brief reviewed', done: true },
-              { label: 'Customer cohort analyzed', done: !!cohortStats },
-              { label: 'Strategy segments created', done: !!campaignPlan.strategy?.segments?.length },
-              { label: 'Email content generated', done: !!campaignPlan.contentVariants?.length },
-              { label: 'A/B test variants ready', done: (campaignPlan.contentVariants?.length || 0) > 1 },
-            ].map((item, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', fontSize: 13 }}>
-                <span style={{ color: item.done ? 'var(--accent-green)' : 'var(--text-muted)', fontWeight: 700 }}>
-                  {item.done ? '✅' : '⬜'}
-                </span>
-                <span style={{ color: item.done ? 'var(--text-primary)' : 'var(--text-muted)' }}>{item.label}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Discovered APIs used */}
-          {discoveredTools.length > 0 && (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 10 }}>
-                APIs Discovered at Runtime
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {discoveredTools.filter((t) => t.path !== '/api/v1/signup').slice(0, 5).map((t, i) => (
-                  <div key={i} className="api-tool">
-                    <span className={`api-method ${t.method.toLowerCase()}`}>{t.method}</span>
-                    <div>
-                      <div className="path">{t.path}</div>
-                      <div className="desc">{t.description?.substring(0, 100)}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.6 }}>
-            <strong>No campaign is sent until you explicitly approve.</strong> Clicking approve will send all variants to their target segments.
-          </p>
-
-          <div className="approval-bar">
-            <button className="btn btn-outline" onClick={() => setStep(4)}>← Back</button>
-            <button className="btn btn-success btn-lg" onClick={handleApprove} style={{ marginLeft: 'auto' }}>
-              ✅ Approve & Send All Campaigns
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ═══════════ POST-LAUNCH: SENT RESULTS ═══════════ */}
-      {sentResults && !loading && (
-        <div className="card">
-          <div className="section-header">
-            <span className="section-num" style={{ background: 'var(--accent-green)' }}>✓</span>
-            <h2>Campaigns Sent Successfully!</h2>
-            <span className="section-badge sbadge-live">✅ Live</span>
-          </div>
-
-          <div className="table-container" style={{ marginBottom: 20 }}>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Campaign ID</th>
-                  <th>Segment</th>
-                  <th>Subject</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sentResults.map((r, i) => (
-                  <tr key={i}>
-                    <td className="mono">{r.campaign_id}</td>
-                    <td>{r.segment || '—'}</td>
-                    <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.subject || '—'}</td>
-                    <td><span className="status-badge success">{r.message || 'Sent'}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <button className="btn btn-primary" onClick={() => router.push(`/campaigns/${dbCampaignId}`)}>
-              📊 View Campaign Details
-            </button>
-            <button className="btn btn-outline" onClick={() => router.push('/campaigns')}>
-              View All Campaigns
-            </button>
-            <button className="btn btn-ghost" onClick={() => {
-              setStep(1);
-              setBrief('');
-              setCampaignPlan(null);
-              setSentResults(null);
-              setLogs([]);
-            }}>
-              ✨ Create Another Campaign
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Agent Reasoning Trail */}
-      {logs.length > 0 && !loading && (
-        <div className="card">
-          <div className="section-header">
-            <span className="section-num" style={{ background: 'var(--gradient-ai)' }}>🤖</span>
-            <h2>Agent Reasoning Trail</h2>
-            <span className="section-badge sbadge-ai">{logs.length} steps</span>
-          </div>
-          <div className="agent-log">
-            {logs.map((l, i) => (
-              <div key={i} className={`log-item ${l.agent}`}>
-                <span className="log-agent">{l.agent}</span>
-                <span className="log-msg">
-                  {l.step && <strong>[{l.step}] </strong>}{l.reasoning}
-                </span>
-              </div>
-            ))}
-            <div ref={logEndRef} />
-          </div>
-        </div>
-      )}
-    </>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   );
 }

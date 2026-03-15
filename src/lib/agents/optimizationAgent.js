@@ -45,7 +45,10 @@ STEP 1 — DIAGNOSE root cause (pick one or more):
 
 STEP 2 — PRODUCE EXACTLY 6 TO 8 NEW MICRO-SEGMENTS.
 Use ONLY the discovered fields and values provided below. Do NOT invent field names or values.
-- Combine at least 2-3 fields per segment (AND logic)
+- Combine 2-3 fields per segment (AND logic). Do NOT use 4+ rules — that creates segments too narrow
+- Segments SHOULD overlap — a customer may appear in multiple segments (deduplication happens at send time)
+- Each segment must target at least 5% of the cohort. Narrower segments will be auto-merged
+- Aim for 85-90%+ total cohort coverage across all segments
 - Maharashtra (Mumbai, Pune, Nagpur): send at 09:00
 - Female 60+: warm tone + send at 10:00
 - High-income professional (41-65): professional tone + send at 09:30
@@ -75,7 +78,9 @@ ${JSON.stringify((originalStrategy.segments || []).map(s => ({ name: s.name, cou
 DISCOVERED SEGMENTATION ATTRIBUTES (use ONLY these):
 ${discoveryText}
 
-Diagnose the failure and produce 6-8 sharp NEW micro-segments using ONLY the fields and values above.
+Diagnose the failure and produce 6-8 NEW micro-segments using ONLY the fields and values above.
+Each segment must cover at least 5% of the cohort. Overlaps are OK. Target 85-90%+ total coverage.
+Prefer 2-rule segments over 4+ rule segments to avoid hyper-narrow matches.
 REMINDER: "values" MUST be a JSON array: ["Female"], [41, 65], ["Mumbai", "Pune"]. Never a bare string or number.
 
 {

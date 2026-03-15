@@ -12,7 +12,9 @@
  *   contains, not_contains
  * 
  * Rules within a segment are combined with AND logic.
- * Segments are made mutually exclusive in execution order to avoid duplicate sends.
+ * Segments may overlap — a customer can appear in multiple segments.
+ * Deduplication happens at send time (orchestrator globallyAssignedCustomerIds).
+ * Segments below a minimum size threshold are merged into the nearest viable segment.
  */
 
 import { detectIdField, analyzeSchema } from './schemaAnalyzer';
@@ -222,8 +224,6 @@ export function executeSegmentationRules(segments, cohortData, idField = null) {
     const cohortFields = cohortData[0] ? Object.keys(cohortData[0]) : [];
     const resolveField = buildFieldResolver(cohortFields);
 
-    const assignedIds = new Set();
-
     for (const segment of segments) {
         // Normalize rules from various LLM output formats
         let rules = segment.rules || segment.criteria || [];
@@ -273,36 +273,91 @@ export function executeSegmentationRules(segments, cohortData, idField = null) {
             console.log(`[RULE-ENGINE]   Rule: ${rule.field} ${rule.operator} ${JSON.stringify(rule.values)} (sample data: ${JSON.stringify(sampleVal)})`);
         }
 
-        // Filter cohort by ALL valid rules (AND logic), excluding IDs already assigned
-        // to previous segments so each customer is targeted once.
+        // Filter cohort by ALL valid rules (AND logic).
+        // Segments may overlap — a customer can appear in multiple segments.
+        // Deduplication happens at send time (orchestrator globallyAssignedCustomerIds).
         const matched = cohortData.filter(record => {
-            const recordId = record[idField];
-            if (assignedIds.has(recordId)) return false;
             if (validRules.length === 0) return false; // Don't match everyone if all rules were dropped
             return validRules.every(rule => evaluateRule(record, rule));
         });
 
         segment.customerIds = matched.map(r => r[idField]);
-        segment.customerIds.forEach(id => assignedIds.add(id));
         segment.count = segment.customerIds.length;
 
         console.log(`[RULE-ENGINE] Segment "${segment.name}": ${rules.length} rules (${validRules.length} valid) → ${segment.count} matches`);
     }
 
-    // Distribute unassigned customers — capped at 10% of total cohort to avoid diluting targeting
+    // ── MINIMUM SEGMENT SIZE ENFORCEMENT ──
+    // Segments below 3% of cohort are too narrow for meaningful A/B testing.
+    // Merge their IDs into the viable segment with most customer overlap.
+    const MIN_SEGMENT_PCT = 0.03;
+    const minSegmentSize = Math.max(10, Math.ceil(cohortData.length * MIN_SEGMENT_PCT));
+
+    for (let i = segments.length - 1; i >= 0; i--) {
+        const seg = segments[i];
+        if (seg.customerIds.length > 0 && seg.customerIds.length < minSegmentSize) {
+            // Find viable segment with most overlap
+            const smallSet = new Set(seg.customerIds);
+            let bestIdx = -1;
+            let bestOverlap = -1;
+
+            for (let j = 0; j < segments.length; j++) {
+                if (j === i || segments[j].customerIds.length < minSegmentSize) continue;
+                const overlap = segments[j].customerIds.filter(id => smallSet.has(id)).length;
+                if (overlap > bestOverlap || (overlap === bestOverlap && segments[j].customerIds.length > (segments[bestIdx]?.customerIds.length || 0))) {
+                    bestOverlap = overlap;
+                    bestIdx = j;
+                }
+            }
+
+            if (bestIdx === -1) {
+                // No viable target — pick the largest segment
+                let maxLen = 0;
+                for (let j = 0; j < segments.length; j++) {
+                    if (j === i) continue;
+                    if (segments[j].customerIds.length > maxLen) {
+                        maxLen = segments[j].customerIds.length;
+                        bestIdx = j;
+                    }
+                }
+            }
+
+            if (bestIdx >= 0) {
+                const target = segments[bestIdx];
+                const targetSet = new Set(target.customerIds);
+                const newIds = seg.customerIds.filter(id => !targetSet.has(id));
+                target.customerIds = [...target.customerIds, ...newIds];
+                target.count = target.customerIds.length;
+                console.log(`[RULE-ENGINE] Merged "${seg.name}" (${seg.count}) → "${target.name}" (now ${target.count})`);
+                segments.splice(i, 1);
+            }
+        }
+    }
+
+    // ── COVERAGE: distribute unassigned customers ──
+    // With overlapping segments, compute coverage as union of all segment IDs.
+    const coveredIds = new Set();
+    for (const segment of segments) {
+        for (const id of segment.customerIds) {
+            coveredIds.add(id);
+        }
+    }
+
     const unassigned = cohortData
-        .filter(r => !assignedIds.has(r[idField]))
+        .filter(r => !coveredIds.has(r[idField]))
         .map(r => r[idField]);
 
     if (unassigned.length > 0 && segments.length > 0) {
-        const maxDistributable = Math.floor(cohortData.length * 0.10); // hard cap: 10%
+        // With overlapping segments, genuinely unassigned customers are true outliers.
+        // Distribute up to 50% of cohort (residual should be small with overlap strategy).
+        const maxDistributable = Math.floor(cohortData.length * 0.50);
         const toDistribute = unassigned.slice(0, maxDistributable);
         const skipped = unassigned.length - toDistribute.length;
 
         if (skipped > 0) {
-            console.log(`[RULE-ENGINE] ${unassigned.length} unassigned — distributing only ${toDistribute.length} (10% cap). Skipping ${skipped} to preserve targeting quality.`);
+            console.log(`[RULE-ENGINE] ${unassigned.length} unassigned — distributing ${toDistribute.length} (50% cap). Skipping ${skipped}.`);
         } else {
-            console.log(`[RULE-ENGINE] ${unassigned.length} unassigned customers — distributing proportionally (within 10% cap)`);
+            console.log(`[RULE-ENGINE] ${unassigned.length} unassigned customers — distributing proportionally`);
         }
 
         const totalAssigned = segments.reduce((sum, s) => sum + (s.customerIds?.length || 0), 0);
@@ -321,6 +376,15 @@ export function executeSegmentationRules(segments, cohortData, idField = null) {
             distributed += share;
         });
     }
+
+    // Log final coverage
+    const finalCovered = new Set();
+    for (const segment of segments) {
+        for (const id of segment.customerIds) {
+            finalCovered.add(id);
+        }
+    }
+    console.log(`[RULE-ENGINE] Final coverage: ${finalCovered.size}/${cohortData.length} (${Math.round(finalCovered.size / cohortData.length * 100)}%)`);
 
     return segments;
 }

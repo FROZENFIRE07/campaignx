@@ -30,10 +30,9 @@ HARD RULES — violating any rule is a FAILURE:
 1. SUBJECT LINE: 35-55 characters ONLY. Must contain "1.25%". Max 1 emoji (end of subject only). NO spam trigger words.
 ${nameHint}
 2. BODY: Maximum 200 words. Mobile-first. Must bold **1.25% higher returns**. Must include: "👉 Explore XDeposit: https://superbfsi.com/xdeposit/explore/". Must end with: "Reply for personalized advice — our team responds within 2 hours."
-3. EXACTLY 3 VARIANTS (A, B, C):
-   - Variant A: Direct benefit + 1.25% + credibility (use name if available)
-   - Variant B: Urgency + local city angle ("${localCity}") + limited time feel
-   - Variant C: Question format + emoji in subject + emotional hook in body
+3. EXACTLY 2 VARIANTS (A, B):
+   - Variant A: Direct benefit + 1.25% + credibility + local city angle ("${localCity}") (use name if available)
+   - Variant B: Urgency + question/emotional hook + emoji in subject + limited time feel
 4. TONE matching: warm/secure for seniors (60+), professional/ROI for high-income, aspirational for young (18-35)
 5. Every variant MUST feel written specifically for THIS segment
 
@@ -50,30 +49,23 @@ Name Personalization Available: ${supportsPersonalization}
 Cohort Summary:
 ${JSON.stringify(cohortSummary, null, 2)}
 
-Create EXACTLY 3 variants (A, B, C). Subject: 35-55 chars with 1.25%${supportsPersonalization ? ' + {{First_Name}} prefix' : ''}. Body: <200 words.
+Create EXACTLY 2 variants (A, B). Subject: 35-55 chars with 1.25%${supportsPersonalization ? ' + {{First_Name}} prefix' : ''}. Body: <200 words.
 
 {
   "variants": [
     {
       "variantName": "A",
-      "subject": "${supportsPersonalization ? '{{First_Name}}, ' : ''}subject with 1.25% benefit (35-55 chars total)",
-      "body": "benefit-led body <200 words, bold 1.25%, CTA, Reply sign-off",
+      "subject": "${supportsPersonalization ? '{{First_Name}}, ' : ''}subject with 1.25% benefit + ${localCity} credibility (35-55 chars total)",
+      "body": "benefit-led body <200 words, bold 1.25%, local credibility, CTA, Reply sign-off",
       "tone": "described tone",
       "reasoning": "why Variant A works"
     },
     {
       "variantName": "B",
-      "subject": "urgency + ${localCity} angle subject (35-55 chars)",
-      "body": "urgency + ${localCity} local body <200 words",
+      "subject": "urgency + question/emotional hook with emoji (35-55 chars)",
+      "body": "urgency + emotional hook body <200 words with limited time angle",
       "tone": "urgent",
       "reasoning": "why Variant B works"
-    },
-    {
-      "variantName": "C",
-      "subject": "question format subject with emoji (35-55 chars)",
-      "body": "question hook body <200 words with emotional angle",
-      "tone": "conversational",
-      "reasoning": "why Variant C works"
     }
   ]
 }`;

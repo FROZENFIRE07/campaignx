@@ -114,6 +114,14 @@ export async function POST(request) {
             return NextResponse.json({ success: true, results });
         }
 
+        if (action === 'delete') {
+            const campaign = await Campaign.findByIdAndDelete(campaignId);
+            if (!campaign) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
+            // Also delete associated logs
+            await AgentLog.deleteMany({ campaignId });
+            return NextResponse.json({ success: true, deleted: campaignId });
+        }
+
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     } catch (error) {
         console.error('Agent API error:', error);

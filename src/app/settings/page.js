@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTheme } from '../components/ThemeProvider';
 
 const SECTIONS = [
   { key: 'general', label: 'General', icon: '⚙️' },
@@ -17,7 +18,7 @@ export default function Settings() {
   const [mongoUri, setMongoUri] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
   const [showGroqKey, setShowGroqKey] = useState(false);
-  const [theme, setTheme] = useState('dark');
+  const { theme, setTheme } = useTheme();
   const [notifications, setNotifications] = useState({ campaign: true, performance: true, agent: false });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -241,14 +242,6 @@ export default function Settings() {
                     >
                       {t === 'dark' ? '🌙' : t === 'light' ? '☀️' : '🔄'} {t.charAt(0).toUpperCase() + t.slice(1)}
                     </button>
-                  ))}
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Accent Color</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {['#6366f1', '#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#ef4444'].map((c) => (
-                    <div key={c} style={{ width: 32, height: 32, borderRadius: 8, background: c, cursor: 'pointer', border: '2px solid transparent' }} />
                   ))}
                 </div>
               </div>

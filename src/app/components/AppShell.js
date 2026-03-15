@@ -2,7 +2,9 @@
 
 import { useState } from 'react';
 import { usePathname } from 'next/navigation';
+import { motion } from 'framer-motion';
 import Sidebar from './Sidebar';
+import { AnimatedGradientBackground } from './MotionComponents';
 
 const PAGE_TITLES = {
   '/': { title: 'Performance Overview', subtitle: "Welcome back, here's what's happening today." },
@@ -15,7 +17,8 @@ const PAGE_TITLES = {
 };
 
 export default function AppShell({ children }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  // true = expanded (mouse is over sidebar), false = collapsed (default)
+  const [expanded, setExpanded] = useState(false);
   const pathname = usePathname();
 
   const getPageInfo = () => {
@@ -26,26 +29,28 @@ export default function AppShell({ children }) {
   };
 
   const pageInfo = getPageInfo();
+  // collapsed: 70px sidebar + 16px left inset + 16px gap = 102px
+  // expanded:  260px sidebar + 16px left inset + 16px gap = 292px
+  const contentMargin = expanded ? 292 : 102;
 
   return (
     <div className="app-layout">
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="main-content">
-        {/* Background gradient blobs */}
-        <div className="bg-blobs">
-          <div className="bg-blob bg-blob-primary" />
-          <div className="bg-blob bg-blob-success" />
-        </div>
+      <Sidebar
+        expanded={expanded}
+        onMouseEnter={() => setExpanded(true)}
+        onMouseLeave={() => setExpanded(false)}
+      />
+
+      <motion.div
+        className="main-content"
+        animate={{ marginLeft: contentMargin }}
+        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        style={{ minHeight: '100vh' }}
+      >
+        <AnimatedGradientBackground />
 
         <header className="main-header">
           <div className="main-header-left">
-            <button
-              className="mobile-sidebar-toggle"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              aria-label="Toggle navigation"
-            >
-              <span className="material-symbols-outlined">menu</span>
-            </button>
             <div>
               <h1 className="page-title">{pageInfo.title}</h1>
               {pageInfo.subtitle && <p className="page-subtitle">{pageInfo.subtitle}</p>}
@@ -62,10 +67,11 @@ export default function AppShell({ children }) {
             </button>
           </div>
         </header>
+
         <div className="page-container">
           {children}
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

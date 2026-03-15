@@ -10,19 +10,6 @@ const AGENT_FILTERS = [
   { label: 'Tool Calls', key: 'tool', color: '#4ade80' },
 ];
 
-const AGENT_STATUS = [
-  { name: 'Orchestrator', status: 'online' },
-  { name: 'Strategy Agent', status: 'online' },
-  { name: 'Content Agent', status: 'processing' },
-  { name: 'Analysis Agent', status: 'online' },
-];
-
-const NAV_ITEMS = [
-  { icon: 'dashboard', label: 'Dashboard', active: false },
-  { icon: 'smart_toy', label: 'Agents', active: false },
-  { icon: 'terminal', label: 'Runtime Logs', active: true },
-  { icon: 'history', label: 'History', active: false },
-];
 
 export default function AIStudio() {
   const [logs, setLogs] = useState([]);
@@ -77,32 +64,7 @@ export default function AIStudio() {
   };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: 24, height: 'calc(100vh - 140px)' }}>
-      {/* Left Sidebar Nav */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {NAV_ITEMS.map((item) => (
-            <button key={item.label}
-              className={`sidebar-nav-item ${item.active ? 'active' : ''}`}
-              style={{ textAlign: 'left', fontSize: 13, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10, border: 'none', background: item.active ? 'var(--accent-primary)' : 'transparent', color: item.active ? '#fff' : 'var(--text-muted)', borderRadius: 10, cursor: 'pointer', fontFamily: 'Inter, sans-serif', fontWeight: item.active ? 600 : 400 }}
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{item.icon}</span>
-              {item.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Agent Status */}
-        <div className="agent-status-card">
-          <div className="agent-status-title">Agent Status</div>
-          {AGENT_STATUS.map((agent) => (
-            <div className="agent-status-row" key={agent.name}>
-              <span className="agent-status-name">{agent.name}</span>
-              <span className={`agent-status-dot agent-status-dot-${agent.status}`} />
-            </div>
-          ))}
-        </div>
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 140px)' }}>
 
       {/* Main Terminal */}
       <div className="glass-dark terminal-container">
@@ -198,6 +160,7 @@ export default function AIStudio() {
         </div>
       </div>
     </div>
+
   );
 }
 

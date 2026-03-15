@@ -64,6 +64,86 @@
   --header-height: 64px;
 }
 
+/* ── Light Theme ── */
+[data-theme="light"] {
+  --bg-primary: #f5f5f5;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #e5e5e5;
+  --bg-elevated: #d4d4d4;
+  --bg-card: rgba(255, 255, 255, 0.92);
+  --bg-glass: rgba(0, 0, 0, 0.02);
+
+  --text-primary: #171717;
+  --text-secondary: #525252;
+  --text-muted: #a3a3a3;
+  --text-disabled: #d4d4d4;
+
+  --border: rgba(0, 0, 0, 0.08);
+  --border-subtle: rgba(0, 0, 0, 0.04);
+  --border-medium: rgba(0, 0, 0, 0.12);
+  --border-strong: rgba(0, 0, 0, 0.2);
+  --border-active: rgba(132, 204, 22, 0.4);
+
+  --glow-purple: rgba(132, 204, 22, 0.06);
+  --glow-blue: rgba(34, 211, 238, 0.04);
+  --glow-green: rgba(132, 204, 22, 0.04);
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.12);
+  --shadow-glow: 0 0 20px rgba(132, 204, 22, 0.15);
+}
+
+[data-theme="light"] body::before {
+  opacity: 0.3;
+}
+
+[data-theme="light"] .main-header {
+  background: rgba(255, 255, 255, 0.85);
+}
+
+[data-theme="light"] .sidebar {
+  /* Inline style on motion.aside handles bg — this is a fallback */
+  background: rgba(255, 255, 255, 0.88);
+}
+
+[data-theme="light"] .sidebar-nav-item:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="light"] .sidebar-nav-item.active {
+  background: rgba(132, 204, 22, 0.1);
+}
+
+[data-theme="light"] .sidebar-user:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="light"] .btn-ghost:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="light"] .btn-outline:hover:not(:disabled) {
+  background: rgba(132, 204, 22, 0.05);
+}
+
+[data-theme="light"] .header-btn {
+  background: var(--bg-secondary);
+}
+
+[data-theme="light"] .header-btn:hover {
+  background: var(--bg-tertiary);
+}
+
+[data-theme="light"] .glass-dark {
+  background: rgba(255, 255, 255, 0.8);
+}
+
+[data-theme="light"] .card-glass {
+  background: rgba(255, 255, 255, 0.7);
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -133,17 +213,18 @@ body::before {
 }
 
 .sidebar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: var(--sidebar-width);
-  height: 100vh;
-  background: var(--bg-secondary);
-  border-right: 1px solid var(--border);
+  /* Positioning/sizing handled by Framer Motion inline styles in Sidebar.js */
   display: flex;
   flex-direction: column;
-  z-index: 100;
-  transition: width 0.3s ease;
+}
+
+.sidebar-subtitle {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-top: 1px;
 }
 
 .sidebar-header {
@@ -282,8 +363,8 @@ body::before {
 }
 
 .main-content {
+  /* margin-left animated by Framer Motion in AppShell.js */
   flex: 1;
-  margin-left: var(--sidebar-width);
   min-height: 100vh;
 }
 
@@ -3761,3 +3842,72 @@ body::before {
     height: 48px;
   }
 }
+
+/* ========================================= */
+/* FRAMER MOTION ANIMATION SUPPORT          */
+/* ========================================= */
+
+/* Animated Gradient Background */
+.animated-gradient-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.animated-gradient-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(120px);
+  opacity: 0.07;
+}
+
+.animated-gradient-blob-1 {
+  width: 600px;
+  height: 600px;
+  top: -10%;
+  left: 10%;
+  background: radial-gradient(circle, var(--accent-primary), transparent 70%);
+}
+
+.animated-gradient-blob-2 {
+  width: 500px;
+  height: 500px;
+  top: 50%;
+  right: 5%;
+  background: radial-gradient(circle, var(--accent-blue), transparent 70%);
+}
+
+.animated-gradient-blob-3 {
+  width: 550px;
+  height: 550px;
+  bottom: -5%;
+  left: 35%;
+  background: radial-gradient(circle, var(--accent-green), transparent 70%);
+}
+
+/* Sidebar Active Indicator (animated via layoutId) */
+.sidebar-active-bg {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  z-index: 0;
+}
+
+/* Remove the default active background since the motion div handles it */
+.sidebar-nav-item.active {
+  background: transparent;
+  border-color: transparent;
+}
+
+[data-theme="light"] .sidebar-active-bg {
+  background: rgba(132, 204, 22, 0.1);
+  border-color: rgba(132, 204, 22, 0.2);
+}
+
+[data-theme="light"] .animated-gradient-blob {
+  opacity: 0.04;
+}
